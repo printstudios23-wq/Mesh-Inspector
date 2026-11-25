@@ -1,5 +1,7 @@
-# build output
-/build*/
+# build output (the prebuilt "build/Mesh Inspector.exe" is deliberately kept in the repository)
+/build-*/
+/build/*
+!/build/Mesh Inspector.exe
 /out/
 /cmake-build-*/
 CMakeCache.txt

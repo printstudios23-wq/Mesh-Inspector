@@ -7,8 +7,35 @@ triangles, flipped normals and more — before you print them or feed them to ot
 
 It opens the common mesh formats, lets you orbit / pan / zoom around the model, toggle wireframe with a
 checkbox, and tells you **how many** problems there are and **where** they are (highlighted right in the 3D view).
+Files with several pieces can be split up and rearranged like in a slicer.
 
-> Status: early version (0.1). Windows is the primary target; it also builds on Linux.
+![Selecting and moving objects with the move gizmo](docs/screenshot-objects.png)
+
+> Version 0.1 — an early release. Windows is the main target; it also builds on Linux.
+
+## Quick start (no compiling needed)
+
+A ready-to-run 64-bit Windows build is included in this repository:
+
+**[`build/Mesh Inspector.exe`](build/Mesh%20Inspector.exe)**
+
+Download or clone the repository and double-click it — there is nothing to install. You can also drop a model file onto
+the window, or start it from a terminal with a file:
+
+```bat
+"build\Mesh Inspector.exe" samples\three_parts.3mf
+```
+
+(In PowerShell put `&` in front: `& ".\build\Mesh Inspector.exe" samples\three_parts.3mf`.)
+
+Good to know:
+
+- It needs Windows 10 or 11 (64-bit) and a graphics driver with **OpenGL 3.3** (anything from the last decade; remote
+  desktop sessions and some virtual machines do not offer it).
+- The executable is not code-signed, so Windows SmartScreen may say "unknown publisher" the first time. Choose
+  **More info → Run anyway**.
+- It was built with MinGW-w64 and is statically linked, so it does not need any extra DLLs or the Visual C++ runtime.
+  To build it yourself (for example to get a Visual Studio build) see [Building](#building).
 
 ## Features
 
@@ -26,6 +53,8 @@ checkbox, and tells you **how many** problems there are and **where** they are (
   move along one axis, the squares slide it in a plane. **Separate objects** lays the pieces out side by side on the
   bed with gaps, like a slicer's Arrange; **Reset positions** puts everything back
 - **Reload (F5)** and optional **auto-reload when the file changes** — handy while you iterate on a generator or exporter
+- **Hide the interface** (`H`) for a clean look at just the model
+- Your settings (colours, display options, window size ...) are remembered between sessions
 - Drag & drop files onto the window, or pass a file on the command line
 - Menus (File / View / Options / Help) live in the title bar, next to the window buttons
 - Loads and analyses on a background thread, so big files do not freeze the window
@@ -44,57 +73,9 @@ checkbox, and tells you **how many** problems there are and **where** they are (
 Files are shown exactly as stored. For the analysis, vertices at the same position are welded first, so STL
 "triangle soup" and OBJ files with split UV seams are checked correctly.
 
-## Building
-
-You need a C++17 compiler, [CMake](https://cmake.org/) 3.16+ and Git. The dependencies
-([GLFW](https://www.glfw.org/), [Dear ImGui](https://github.com/ocornut/imgui) and
-[cgltf](https://github.com/jkuhlmann/cgltf)) are downloaded automatically by CMake the first time you configure,
-so you need an internet connection for that step.
-
-### Windows (Visual Studio)
-
-Install Visual Studio 2019 or 2022 with the **Desktop development with C++** workload (this includes CMake),
-plus Git. Then, in a terminal:
-
-```bat
-git clone https://github.com/printstudios23-wq/3D-viewer.git
-cd 3D-viewer
-cmake -S . -B build
-cmake --build build --config Release
-"build\Release\Mesh Inspector.exe" samples\icosphere_defects.obj
-```
-
-In PowerShell put `&` in front of the quoted path (`& ".\build\Release\Mesh Inspector.exe"`). The executable is self-contained (the C++ runtime is linked statically). You can also open the folder in Visual
-Studio ("Open a local folder") and let it configure CMake for you.
-
-### Windows (MinGW-w64) / Linux
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-"./build/Mesh Inspector" samples/icosphere_defects.obj
-```
-
-On Linux you need the X11 and OpenGL development packages, e.g. on Debian / Ubuntu:
-
-```sh
-sudo apt install build-essential cmake git libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev
-```
-
-### Tests
-
-The mesh analysis and the file loaders have unit tests that do not need a GPU or a window:
-
-```sh
-ctest --test-dir build -C Release --output-on-failure
-```
-
-To build only the library and the tests (no GUI, nothing but cgltf is downloaded):
-`cmake -S . -B build -DMESHINSPECTOR_BUILD_APP=OFF`.
-
 ## Using it
 
-Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `"Mesh Inspector.exe" <file>`.
+Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or pass it on the command line.
 
 | Action | Control |
 | --- | --- |
@@ -112,18 +93,16 @@ Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `"M
 | Hide / show the whole interface | `H` (or `Esc` to show it again) |
 | Reload | `F5` |
 
-Your settings (colours, display options, up axis, analysis thresholds, window size) are saved automatically and restored
-the next time you start the program. They live in `%APPDATA%\MeshInspector\settings.ini` (`~/.config/meshinspector/`
-on Linux). Delete that file, or start with `"Mesh Inspector.exe" --reset-settings`, to go back to the defaults.
-
-If the custom title bar ever misbehaves on your system, start the program with `"Mesh Inspector.exe" --native-frame` to get the
-normal Windows title bar (the menus then sit just below it).
-
-**Hide the interface:** press `H` (or **View > Hide interface**) to get a clean view of just the model; `H` or `Esc`
-brings the interface back.
-
 **Up axis:** models are shown Z-up by default (the STL / CAD / slicer convention). glTF and most OBJ files use +Y as
 up, so if one of those lies on its back, switch **Options > Up axis**.
+
+**Settings** (colours, display options, up axis, analysis thresholds, window size) are saved automatically and restored
+the next time you start the program. They live in `%APPDATA%\MeshInspector\settings.ini` (`~/.config/meshinspector/`
+on Linux). Delete that file, or start with `--reset-settings`, to go back to the defaults.
+
+**Command line options:** `--reset-settings` starts with the default settings. `--native-frame` uses the normal Windows
+title bar instead of the custom one (the menus then sit just below it) — a fallback in case the custom title bar ever
+misbehaves on your system.
 
 ## What the checks mean
 
@@ -145,36 +124,91 @@ Not checked yet: self-intersections and wall thickness.
 
 ## Samples
 
-The `samples/` folder contains a clean sphere (`icosphere_clean.obj` / `.stl`) and `icosphere_defects.obj`, which has
-holes, flipped and duplicate triangles, degenerate triangles and a non-manifold fin on purpose. They are produced by
-`samples/generate_samples.py`. `three_parts.3mf` / `.obj` hold a cube, a sphere and a cylinder as three objects piled up
-close together — open it and try **Separate objects** and the move gizmo.
+The `samples/` folder contains a clean sphere (`icosphere_clean.obj` / `.stl` / `.3mf`) and `icosphere_defects.obj`, which has
+holes, flipped and duplicate triangles, degenerate triangles and a non-manifold fin on purpose. `three_parts.3mf` / `.obj`
+hold a cube, a sphere and a cylinder as three objects piled up close together — open it and try **Separate objects** and the
+move gizmo. They are produced by `samples/generate_samples.py`.
+
+## Building
+
+You need a C++17 compiler, [CMake](https://cmake.org/) 3.16+ and Git. The dependencies
+([GLFW](https://www.glfw.org/), [Dear ImGui](https://github.com/ocornut/imgui) and
+[cgltf](https://github.com/jkuhlmann/cgltf)) are downloaded automatically by CMake the first time you configure,
+so you need an internet connection for that step.
+
+### Windows (Visual Studio)
+
+Install Visual Studio 2019 or 2022 with the **Desktop development with C++** workload (this includes CMake),
+plus Git. Then, in a terminal:
+
+```bat
+git clone https://github.com/printstudios23-wq/3D-viewer.git
+cd 3D-viewer
+cmake -S . -B build
+cmake --build build --config Release
+"build\Release\Mesh Inspector.exe" samples\icosphere_defects.obj
+```
+
+The executable is self-contained (the C++ runtime is linked statically). You can also open the folder in Visual
+Studio ("Open a local folder") and let it configure CMake for you.
+
+### Windows (MinGW-w64) / Linux
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+"./build/Mesh Inspector" samples/icosphere_defects.obj
+```
+
+With a single-configuration generator (Ninja, Makefiles) the program is written straight to `build/`, replacing the
+prebuilt `Mesh Inspector.exe` that ships in the repository. Use another folder (`-B out`) to keep it.
+
+On Linux you need the X11 and OpenGL development packages, e.g. on Debian / Ubuntu:
+
+```sh
+sudo apt install build-essential cmake git libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev
+```
+
+### Tests
+
+The mesh analysis, the file loaders, the settings and the object arranging have unit tests that do not need a GPU or a window:
+
+```sh
+ctest --test-dir build -C Release --output-on-failure
+```
+
+To build only the library and the tests (no GUI, nothing but cgltf is downloaded):
+`cmake -S . -B build -DMESHINSPECTOR_BUILD_APP=OFF`.
 
 ## Project layout
 
 ```
+build/              the prebuilt Windows executable
 src/analysis.*      mesh analysis (welding, topology, triangle quality)
 src/loaders/        OBJ, STL, 3MF (with its own ZIP/inflate), PLY, OFF and glTF readers
 src/mesh_io.*       picks the loader from the file extension
 src/objects.*       separate objects: arranging, picking with a ray, gizmo ray maths
+src/settings.*      saving and loading the user's settings
 src/renderer.*      OpenGL 3.3 rendering (surface, wireframe, problem overlays, grid)
 src/camera.*        orbit camera
 src/app.*, ui.cpp   window, input, background loading, Dear ImGui interface
+src/objects_ui.cpp  object selection and the move gizmo
 src/platform_*.cpp  native file dialog and the custom title bar on Windows
 resources/          application icon (app.ico, drawn by make_icon.py) and Windows version info
+samples/            example meshes
 tests/              unit tests (no GPU needed)
 ```
 
-The analysis and loader code (`meshinspector_core`) has no GUI or OpenGL dependency, so it can be reused or tested on its own.
+The analysis, loader, settings and object code (`meshinspector_core`) has no GUI or OpenGL dependency, so it can be
+reused or tested on its own.
 
 ## Ideas for later
 
 - self-intersection and minimum wall thickness checks, automatic repair (fill holes, fix winding, remove degenerate triangles)
 - FBX support, 3MF colours / materials, texture display, Draco compressed glTF
-- rotate / scale gizmo, snapping, export of the rearranged scene (positions are not saved yet)
+- rotate / scale gizmo, snapping, saving / exporting the rearranged scene (object positions are not saved yet)
 - export of the cleaned mesh, side-by-side comparison of two files
-- remember window and options between runs, recent files
-- keyboard-accessible menus
+- recent files list, keyboard-accessible menus
 
 Contributions are welcome — please open an issue or a pull request.
 
