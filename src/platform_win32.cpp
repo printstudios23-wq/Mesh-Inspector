@@ -124,6 +124,8 @@ void installCustomFrame(GLFWwindow* window, FrameRegions* regions) {
     SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+bool hasNativeFileDialog() { return true; }
+
 std::string openFileDialog(GLFWwindow* window) {
     wchar_t file[32768] = {};
     OPENFILENAMEW ofn{};

@@ -26,6 +26,9 @@ bool supportsCustomFrame();
 // Call right after creating the (hidden) window. `regions` must outlive the window.
 void installCustomFrame(GLFWwindow* window, FrameRegions* regions);
 
+// True if a native "Open" dialog exists (Windows). Elsewhere the program shows its own file browser.
+bool hasNativeFileDialog();
+
 // Shows the native "Open" dialog. Returns the chosen path as UTF-8, or "" if cancelled.
 std::string openFileDialog(GLFWwindow* window);
 

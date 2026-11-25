@@ -8,7 +8,7 @@ if(POLICY CMP0091)
 endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(MeshInspector VERSION 0.1.0 LANGUAGES C CXX)
+project(MeshInspector VERSION 0.1.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -144,5 +144,9 @@ if(MESHINSPECTOR_BUILD_APP)
     find_package(OpenGL REQUIRED)
     target_link_libraries(meshinspector PRIVATE Threads::Threads OpenGL::GL ${CMAKE_DL_LIBS})
     target_compile_options(meshinspector PRIVATE -Wall -Wextra)
+    if(NOT APPLE)
+      # keep the binary independent of the C++ runtime of the machine it was built on
+      target_link_options(meshinspector PRIVATE -static-libstdc++ -static-libgcc)
+    endif()
   endif()
 endif()

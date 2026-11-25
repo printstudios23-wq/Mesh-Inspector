@@ -1,11 +1,11 @@
 name: release
 
-# Builds the Windows executable on a clean GitHub runner and attaches it to a GitHub Release.
+# Builds the Windows and Linux programs on clean GitHub runners and attaches them to a GitHub Release.
 #
-#   * Push a version tag (git tag v0.1.0 && git push origin v0.1.0), or
-#   * Actions tab > "release" > Run workflow, and type a tag such as v0.1.0.
+#   * Push a version tag (git tag v0.1.1 && git push origin v0.1.1), or
+#   * Actions tab > "release" > Run workflow, and type a tag such as v0.1.1.
 #
-# Running it without a tag only builds and keeps the files as a downloadable workflow artifact.
+# Running it without a tag only builds and keeps the files as downloadable workflow artifacts.
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to create or update (for example v0.1.0). Leave empty to only build.'
+        description: 'Release tag to create or update (for example v0.1.1). Leave empty to only build.'
         required: false
         default: ''
 
@@ -54,6 +54,56 @@ jobs:
         with:
           name: Mesh-Inspector-windows-x64
           path: dist/*
+
+  linux:
+    # An older Ubuntu on purpose: the program then runs on that release and anything newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev
+
+      - name: Configure
+        run: cmake -S . -B out -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build out
+
+      - name: Test
+        run: ctest --test-dir out --output-on-failure
+
+      - name: Package
+        run: |
+          mkdir -p dist stage/Mesh-Inspector-linux-x64
+          cp "out/Mesh Inspector" stage/Mesh-Inspector-linux-x64/Mesh-Inspector
+          strip stage/Mesh-Inspector-linux-x64/Mesh-Inspector
+          chmod +x stage/Mesh-Inspector-linux-x64/Mesh-Inspector
+          cp -r samples stage/Mesh-Inspector-linux-x64/samples
+          cp README.md LICENSE THIRD_PARTY_NOTICES.md stage/Mesh-Inspector-linux-x64/
+          tar -czf dist/Mesh-Inspector-linux-x64.tar.gz -C stage Mesh-Inspector-linux-x64
+          ls -l dist
+          echo "Libraries the program needs:"
+          ldd stage/Mesh-Inspector-linux-x64/Mesh-Inspector
+          echo "Newest glibc version needed:"
+          objdump -T stage/Mesh-Inspector-linux-x64/Mesh-Inspector | grep -o 'GLIBC_[0-9.]*' | sort -V | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesh-Inspector-linux-x64
+          path: dist/*
+
+  publish:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -l dist
 
       - name: Publish release (version tag pushed)
         if: startsWith(github.ref, 'refs/tags/v')

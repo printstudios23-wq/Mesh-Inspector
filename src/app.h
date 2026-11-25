@@ -99,6 +99,9 @@ private:
     void drawEmptyState();
     void drawModals();
     void drawObjectsSection();
+    void drawFileBrowser();
+    void openFileBrowser();
+    void refreshFileBrowser();
     void drawHideHint();
 
     GLFWwindow* window_ = nullptr;
@@ -141,6 +144,20 @@ private:
     int openMenu_ = -1;
     float menuX_[4] = {0, 0, 0, 0};
     bool openDialogRequested_ = false;
+
+    // built-in file browser (used where there is no native dialog)
+    struct BrowserEntry {
+        std::string name;
+        bool isDir = false;
+        uintmax_t size = 0;
+    };
+    bool browserRequested_ = false;
+    std::filesystem::path browserDir_;
+    std::vector<BrowserEntry> browserEntries_;
+    std::string browserSelected_;
+    bool browserShowAll_ = false;
+    bool browserShowHidden_ = false;
+    char browserPathInput_[1024] = {};
     bool showControls_ = false;
     bool showAbout_ = false;
     std::string errorText_;

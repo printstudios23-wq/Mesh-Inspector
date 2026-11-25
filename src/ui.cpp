@@ -715,8 +715,90 @@ void App::drawReportPanel() {
 
 // ============================================================================ dialogs
 
+void App::drawFileBrowser() {
+    const float s = uiScale_;
+    const ImVec2 center((viewport_.x0 + viewport_.x1) * 0.5f, (viewport_.y0 + viewport_.y1) * 0.5f);
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(680.0f * s, 500.0f * s), ImGuiCond_Appearing);
+    bool open = true;
+    if (!ImGui::BeginPopupModal("Open file##browser", &open, ImGuiWindowFlags_NoSavedSettings)) return;
+
+    auto goTo = [&](const std::filesystem::path& dir) {
+        std::error_code ec;
+        if (std::filesystem::is_directory(dir, ec)) {
+            browserDir_ = std::filesystem::weakly_canonical(dir, ec);
+            if (ec) browserDir_ = dir;
+            browserSelected_.clear();
+            refreshFileBrowser();
+        }
+    };
+    auto openChosen = [&](const std::string& name) {
+        openFile(browserDir_ / std::filesystem::u8path(name));
+        ImGui::CloseCurrentPopup();
+    };
+
+    if (ImGui::Button("Up")) goTo(browserDir_.parent_path());
+    ImGui::SameLine();
+    if (ImGui::Button("Home")) {
+        const char* home = std::getenv("HOME");
+        if (home && *home) goTo(home);
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::InputText("##path", browserPathInput_, sizeof browserPathInput_, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        const std::filesystem::path typed = std::filesystem::u8path(browserPathInput_);
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(typed, ec)) {
+            openFile(typed);
+            ImGui::CloseCurrentPopup();
+        } else {
+            goTo(typed);
+        }
+    }
+
+    const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+    if (ImGui::BeginChild("##files", ImVec2(0, -footer), true)) {
+        for (const BrowserEntry& e : browserEntries_) {
+            const std::string label = (e.isDir ? "[folder]  " : "") + e.name;
+            if (ImGui::Selectable(label.c_str(), !e.isDir && browserSelected_ == e.name, ImGuiSelectableFlags_AllowDoubleClick)) {
+                if (!e.isDir) browserSelected_ = e.name;
+                if (ImGui::IsMouseDoubleClicked(0)) {
+                    if (e.isDir) {
+                        goTo(browserDir_ / std::filesystem::u8path(e.name));
+                        break;  // the list was rebuilt
+                    }
+                    openChosen(e.name);
+                    break;
+                }
+            }
+            if (!e.isDir) {
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 70.0f * s + ImGui::GetCursorPosX());
+                ImGui::TextDisabled("%s", fmtBytes(e.size).c_str());
+            }
+        }
+        if (browserEntries_.empty()) ImGui::TextDisabled("No model files in this folder.");
+    }
+    ImGui::EndChild();
+
+    if (ImGui::Checkbox("All files", &browserShowAll_)) refreshFileBrowser();
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Hidden", &browserShowHidden_)) refreshFileBrowser();
+    ImGui::SameLine(ImGui::GetWindowWidth() - 190.0f * s);
+    ImGui::BeginDisabled(browserSelected_.empty());
+    if (ImGui::Button("Open", ImVec2(80.0f * s, 0))) openChosen(browserSelected_);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(80.0f * s, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 void App::drawModals() {
     const float s = uiScale_;
+    if (browserRequested_) {
+        ImGui::OpenPopup("Open file##browser");
+        browserRequested_ = false;
+    }
+    drawFileBrowser();
     if (errorPopupPending_) {
         ImGui::OpenPopup("Error##modal");
         errorPopupPending_ = false;

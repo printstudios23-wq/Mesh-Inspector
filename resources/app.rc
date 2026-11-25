@@ -8,8 +8,8 @@
 GLFW_ICON ICON "app.ico"
 
 1 VERSIONINFO
- FILEVERSION 0,1,0,0
- PRODUCTVERSION 0,1,0,0
+ FILEVERSION 0,1,1,0
+ PRODUCTVERSION 0,1,1,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0x0L
  FILEOS 0x40004L
@@ -22,12 +22,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Print Studios"
             VALUE "FileDescription", "Mesh Inspector - 3D mesh viewer and quality checker"
-            VALUE "FileVersion", "0.1.0"
+            VALUE "FileVersion", "0.1.1"
             VALUE "InternalName", "meshinspector"
             VALUE "LegalCopyright", "Copyright 2026 Print Studios. Licensed under the Apache License, Version 2.0."
             VALUE "OriginalFilename", "Mesh Inspector.exe"
             VALUE "ProductName", "Mesh Inspector"
-            VALUE "ProductVersion", "0.1.0"
+            VALUE "ProductVersion", "0.1.1"
         END
     END
     BLOCK "VarFileInfo"

@@ -12,17 +12,9 @@ bool supportsCustomFrame() { return false; }
 
 void installCustomFrame(GLFWwindow*, FrameRegions*) {}
 
-std::string openFileDialog(GLFWwindow*) {
-    // Best effort: use zenity if it is installed. Otherwise drag & drop or a command line argument work.
-    std::string result;
-    if (FILE* p = popen("zenity --file-selection --title='Open 3D model' 2>/dev/null", "r")) {
-        char buf[4096];
-        while (fgets(buf, sizeof buf, p)) result += buf;
-        pclose(p);
-    }
-    while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) result.pop_back();
-    return result;
-}
+bool hasNativeFileDialog() { return false; }
+
+std::string openFileDialog(GLFWwindow*) { return {}; }  // not used: the program shows its own file browser
 
 std::string configDirectory() {
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) return std::string(xdg) + "/meshinspector";
