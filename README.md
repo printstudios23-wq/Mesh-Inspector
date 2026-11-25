@@ -61,10 +61,10 @@ git clone https://github.com/printstudios23-wq/3D-viewer.git
 cd 3D-viewer
 cmake -S . -B build
 cmake --build build --config Release
-build\Release\meshinspector.exe samples\icosphere_defects.obj
+"build\Release\Mesh Inspector.exe" samples\icosphere_defects.obj
 ```
 
-The executable is self-contained (the C++ runtime is linked statically). You can also open the folder in Visual
+In PowerShell put `&` in front of the quoted path (`& ".\build\Release\Mesh Inspector.exe"`). The executable is self-contained (the C++ runtime is linked statically). You can also open the folder in Visual
 Studio ("Open a local folder") and let it configure CMake for you.
 
 ### Windows (MinGW-w64) / Linux
@@ -72,7 +72,7 @@ Studio ("Open a local folder") and let it configure CMake for you.
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/meshinspector samples/icosphere_defects.obj
+"./build/Mesh Inspector" samples/icosphere_defects.obj
 ```
 
 On Linux you need the X11 and OpenGL development packages, e.g. on Debian / Ubuntu:
@@ -94,7 +94,7 @@ To build only the library and the tests (no GUI, nothing but cgltf is downloaded
 
 ## Using it
 
-Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `meshinspector <file>`.
+Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `"Mesh Inspector.exe" <file>`.
 
 | Action | Control |
 | --- | --- |
@@ -114,9 +114,9 @@ Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `me
 
 Your settings (colours, display options, up axis, analysis thresholds, window size) are saved automatically and restored
 the next time you start the program. They live in `%APPDATA%\MeshInspector\settings.ini` (`~/.config/meshinspector/`
-on Linux). Delete that file, or start with `meshinspector --reset-settings`, to go back to the defaults.
+on Linux). Delete that file, or start with `"Mesh Inspector.exe" --reset-settings`, to go back to the defaults.
 
-If the custom title bar ever misbehaves on your system, start the program with `meshinspector --native-frame` to get the
+If the custom title bar ever misbehaves on your system, start the program with `"Mesh Inspector.exe" --native-frame` to get the
 normal Windows title bar (the menus then sit just below it).
 
 **Hide the interface:** press `H` (or **View > Hide interface**) to get a clean view of just the model; `H` or `Esc`

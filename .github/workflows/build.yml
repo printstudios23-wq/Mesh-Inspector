@@ -18,7 +18,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: meshinspector-windows
-          path: build/Release/meshinspector.exe
+          path: build/Release/Mesh Inspector.exe
 
   linux:
     runs-on: ubuntu-latest

@@ -120,6 +120,8 @@ if(MESHINSPECTOR_BUILD_APP)
   endif()
 
   add_executable(meshinspector ${APP_SOURCES})
+  # The file users see is "Mesh Inspector.exe" (the CMake target keeps its plain name).
+  set_target_properties(meshinspector PROPERTIES OUTPUT_NAME "Mesh Inspector")
   target_include_directories(meshinspector PRIVATE resources)  # lets the resource compiler find app.ico
   target_link_libraries(meshinspector PRIVATE meshinspector_core imgui glfw)
   target_compile_definitions(meshinspector PRIVATE GLFW_INCLUDE_NONE

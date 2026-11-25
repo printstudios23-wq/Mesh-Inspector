@@ -24,7 +24,7 @@ BEGIN
             VALUE "FileVersion", "0.1.0"
             VALUE "InternalName", "meshinspector"
             VALUE "LegalCopyright", "Licensed under the Apache License, Version 2.0"
-            VALUE "OriginalFilename", "meshinspector.exe"
+            VALUE "OriginalFilename", "Mesh Inspector.exe"
             VALUE "ProductName", "Mesh Inspector"
             VALUE "ProductVersion", "0.1.0"
         END
