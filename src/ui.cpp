@@ -785,6 +785,7 @@ void App::drawModals() {
         ImGui::Text("%s  %s", kAppName, MESHINSPECTOR_VERSION);
         ImGui::TextDisabled("A small 3D mesh viewer and quality checker.");
         ImGui::Spacing();
+        ImGui::TextUnformatted("Copyright 2026 Print Studios");
         ImGui::TextUnformatted("Licensed under the Apache License, Version 2.0.");
         ImGui::Spacing();
         ImGui::TextDisabled("Built with Dear ImGui (MIT), GLFW (zlib) and cgltf (MIT).");

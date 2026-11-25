@@ -26,10 +26,10 @@ These files are built automatically on a clean Windows machine by GitHub Actions
 You can also start it from a terminal with a file:
 
 ```bat
-"Mesh Inspector.exe" samples\three_parts.3mf
+"Mesh-Inspector.exe" samples\three_parts.3mf
 ```
 
-(In PowerShell put `&` in front: `& ".\Mesh Inspector.exe" samples\three_parts.3mf`.)
+(In PowerShell put `&` in front: `& ".\Mesh-Inspector.exe" samples\three_parts.3mf`.)
 
 Good to know:
 
@@ -163,9 +163,6 @@ cmake --build build
 "./build/Mesh Inspector" samples/icosphere_defects.obj
 ```
 
-With a single-configuration generator (Ninja, Makefiles) the program is written straight to `build/`, replacing the
-prebuilt `Mesh Inspector.exe` that ships in the repository. Use another folder (`-B out`) to keep it.
-
 On Linux you need the X11 and OpenGL development packages, e.g. on Debian / Ubuntu:
 
 ```sh
@@ -186,7 +183,6 @@ To build only the library and the tests (no GUI, nothing but cgltf is downloaded
 ## Project layout
 
 ```
-build/              the prebuilt Windows executable (the latest build from this repository)
 .github/workflows/  CI build + tests, and the release workflow that publishes the executable
 src/analysis.*      mesh analysis (welding, topology, triangle quality)
 src/loaders/        OBJ, STL, 3MF (with its own ZIP/inflate), PLY, OFF and glTF readers
@@ -218,5 +214,5 @@ Contributions are welcome — please open an issue or a pull request.
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE). Third-party components are listed in
+Copyright 2026 Print Studios. Licensed under the [Apache License 2.0](LICENSE). Third-party components are listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
