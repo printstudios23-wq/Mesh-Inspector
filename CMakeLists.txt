@@ -112,12 +112,15 @@ if(MESHINSPECTOR_BUILD_APP)
     src/renderer.cpp
     src/gl_loader.cpp)
   if(WIN32)
-    list(APPEND APP_SOURCES src/platform_win32.cpp)
+    list(APPEND APP_SOURCES src/platform_win32.cpp resources/app.rc)
+    # rebuild the resources when the icon changes
+    set_source_files_properties(resources/app.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/app.ico)
   else()
     list(APPEND APP_SOURCES src/platform_other.cpp)
   endif()
 
   add_executable(meshinspector ${APP_SOURCES})
+  target_include_directories(meshinspector PRIVATE resources)  # lets the resource compiler find app.ico
   target_link_libraries(meshinspector PRIVATE meshinspector_core imgui glfw)
   target_compile_definitions(meshinspector PRIVATE GLFW_INCLUDE_NONE
     MESHINSPECTOR_VERSION="${PROJECT_VERSION}")

@@ -161,6 +161,7 @@ src/renderer.*      OpenGL 3.3 rendering (surface, wireframe, problem overlays, 
 src/camera.*        orbit camera
 src/app.*, ui.cpp   window, input, background loading, Dear ImGui interface
 src/platform_*.cpp  native file dialog and the custom title bar on Windows
+resources/          application icon (app.ico, drawn by make_icon.py) and Windows version info
 tests/              unit tests (no GPU needed)
 ```
 
