@@ -15,13 +15,13 @@ Files with several pieces can be split up and rearranged like in a slicer.
 
 ## Quick start (no compiling needed)
 
-**[⬇ Download Mesh Inspector.exe](https://github.com/printstudios23-wq/3D-viewer/raw/main/build/Mesh%20Inspector.exe)**
+**[⬇ Download Mesh-Inspector.exe](https://github.com/printstudios23-wq/Mesh-Inspector/releases/latest/download/Mesh-Inspector.exe)**
 — a ready-to-run 64-bit Windows program. Download it, double-click it, done: there is nothing to install. Then drop a
 model file onto the window, or use **File > Open**.
 
-Versioned downloads (the program on its own, or a zip that also contains the sample models) are on the
-**[Releases page](https://github.com/printstudios23-wq/3D-viewer/releases/latest)**. Those are built automatically on a
-clean Windows machine by GitHub Actions (see `.github/workflows/release.yml`).
+Prefer a zip that also contains the sample models? **[⬇ Mesh-Inspector-windows-x64.zip](https://github.com/printstudios23-wq/Mesh-Inspector/releases/latest/download/Mesh-Inspector-windows-x64.zip)**
+— or see all versions on the **[Releases page](https://github.com/printstudios23-wq/Mesh-Inspector/releases/latest)**.
+These files are built automatically on a clean Windows machine by GitHub Actions (see `.github/workflows/release.yml`).
 
 You can also start it from a terminal with a file:
 
@@ -145,8 +145,8 @@ Install Visual Studio 2019 or 2022 with the **Desktop development with C++** wor
 plus Git. Then, in a terminal:
 
 ```bat
-git clone https://github.com/printstudios23-wq/3D-viewer.git
-cd 3D-viewer
+git clone https://github.com/printstudios23-wq/Mesh-Inspector.git
+cd Mesh-Inspector
 cmake -S . -B build
 cmake --build build --config Release
 "build\Release\Mesh Inspector.exe" samples\icosphere_defects.obj
