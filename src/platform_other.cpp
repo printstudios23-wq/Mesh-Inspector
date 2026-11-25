@@ -24,6 +24,12 @@ std::string openFileDialog(GLFWwindow*) {
     return result;
 }
 
+std::string configDirectory() {
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) return std::string(xdg) + "/meshinspector";
+    if (const char* home = std::getenv("HOME"); home && *home) return std::string(home) + "/.config/meshinspector";
+    return {};
+}
+
 void showErrorMessage(const std::string& title, const std::string& message) {
     std::fprintf(stderr, "%s: %s\n", title.c_str(), message.c_str());
 }

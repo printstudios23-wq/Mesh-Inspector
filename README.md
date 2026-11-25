@@ -106,6 +106,10 @@ Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `me
 | Hide / show the whole interface | `H` (or `Esc` to show it again) |
 | Reload | `F5` |
 
+Your settings (colours, display options, up axis, analysis thresholds, window size) are saved automatically and restored
+the next time you start the program. They live in `%APPDATA%\MeshInspector\settings.ini` (`~/.config/meshinspector/`
+on Linux). Delete that file, or start with `meshinspector --reset-settings`, to go back to the defaults.
+
 If the custom title bar ever misbehaves on your system, start the program with `meshinspector --native-frame` to get the
 normal Windows title bar (the menus then sit just below it).
 

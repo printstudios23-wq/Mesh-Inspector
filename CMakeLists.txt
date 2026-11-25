@@ -38,6 +38,7 @@ FetchContent_MakeAvailable(cgltf)
 # ---------------------------------------------------------------------------
 add_library(meshinspector_core STATIC
   src/analysis.cpp
+  src/settings.cpp
   src/mesh_io.cpp
   src/loaders/obj.cpp
   src/loaders/stl.cpp

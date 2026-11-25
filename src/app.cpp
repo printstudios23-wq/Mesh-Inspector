@@ -63,18 +63,36 @@ bool App::init(const std::vector<std::string>& args) {
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);  // shown once everything is set up
     glfwWindowHint(GLFW_SAMPLES, 4);
 
-    // Default 1360x860 "logical" pixels, scaled for the monitor's DPI but at most 90% of the work area.
-    int winW = 1360, winH = 860;
+    // Settings from the previous session (--reset-settings ignores them).
+    Settings saved;
+    const bool resetSettings = std::any_of(args.begin(), args.end(), [](const std::string& a) { return a == "--reset-settings"; });
+    const std::string configDir = platform::configDirectory();
+    if (!configDir.empty()) settingsFile_ = pathFromUtf8(configDir) / "settings.ini";
+    if (!resetSettings && !settingsFile_.empty()) loadSettingsFile(settingsFile_, saved);
+    view_ = saved.view;
+    view_.hideUi = false;
+    lastSavedSettings_ = serializeSettings(saved);
+
+    // Window size: the saved one, otherwise 1360x860 "logical" pixels scaled for the monitor's DPI.
+    // Either way at most 95% of the work area, so it always fits on screen.
+    const bool haveSavedSize = saved.window.width >= 760 && saved.window.height >= 480;
+    int winW = haveSavedSize ? saved.window.width : 1360, winH = haveSavedSize ? saved.window.height : 860;
     if (GLFWmonitor* mon = glfwGetPrimaryMonitor()) {
         float sx = 1.0f, sy = 1.0f;
         glfwGetMonitorContentScale(mon, &sx, &sy);
         int wx, wy, ww, wh;
         glfwGetMonitorWorkarea(mon, &wx, &wy, &ww, &wh);
-        winW = std::min(static_cast<int>(winW * sx), static_cast<int>(ww * 0.9f));
-        winH = std::min(static_cast<int>(winH * sy), static_cast<int>(wh * 0.9f));
+        if (!haveSavedSize) {
+            winW = static_cast<int>(winW * sx);
+            winH = static_cast<int>(winH * sy);
+        }
+        winW = std::min(winW, static_cast<int>(ww * 0.95f));
+        winH = std::min(winH, static_cast<int>(wh * 0.95f));
         winW = std::max(winW, 760);
         winH = std::max(winH, 480);
     }
+    normalWinW_ = winW;
+    normalWinH_ = winH;
     window_ = glfwCreateWindow(winW, winH, kAppName, nullptr, nullptr);
     if (!window_) {
         glfwWindowHint(GLFW_SAMPLES, 0);  // some drivers / remote sessions have no multisampling
@@ -89,17 +107,26 @@ bool App::init(const std::vector<std::string>& args) {
     glfwSetWindowUserPointer(window_, this);
     glfwSetWindowSizeLimits(window_, 760, 480, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
+    // --native-frame keeps the normal system title bar (fallback in case the custom one misbehaves).
+    const bool nativeFrame = std::any_of(args.begin(), args.end(), [](const std::string& a) { return a == "--native-frame"; });
+    customFrame_ = platform::supportsCustomFrame() && !nativeFrame;
+    if (customFrame_) {
+        platform::installCustomFrame(window_, &frameRegions_);
+        // Without a native caption the client area is taller than what was requested. Ask for the
+        // difference less, so the window opens at exactly the wanted size (and the saved size
+        // does not creep upwards from one session to the next).
+        int cw = 0, ch = 0;
+        glfwGetWindowSize(window_, &cw, &ch);
+        if (cw > 0 && ch > 0 && (cw != winW || ch != winH)) glfwSetWindowSize(window_, std::max(760, winW - (cw - winW)), std::max(480, winH - (ch - winH)));
+    }
+
     if (GLFWmonitor* mon = glfwGetPrimaryMonitor()) {  // centre on the primary monitor
         int mx, my, mw, mh, ww, wh;
         glfwGetMonitorWorkarea(mon, &mx, &my, &mw, &mh);
         glfwGetWindowSize(window_, &ww, &wh);
         glfwSetWindowPos(window_, mx + std::max(0, (mw - ww) / 2), my + std::max(0, (mh - wh) / 2));
     }
-
-    // --native-frame keeps the normal system title bar (fallback in case the custom one misbehaves).
-    const bool nativeFrame = std::any_of(args.begin(), args.end(), [](const std::string& a) { return a == "--native-frame"; });
-    customFrame_ = platform::supportsCustomFrame() && !nativeFrame;
-    if (customFrame_) platform::installCustomFrame(window_, &frameRegions_);
+    if (saved.window.maximized) glfwMaximizeWindow(window_);
 
     glfwMakeContextCurrent(window_);
     const char* missing = nullptr;
@@ -262,7 +289,21 @@ int App::run() {
         }
         frame();
     }
+    saveSettings();
     return 0;
+}
+
+void App::saveSettings() {
+    if (settingsFile_.empty()) return;
+    Settings s;
+    s.view = view_;
+    s.window.width = normalWinW_;
+    s.window.height = normalWinH_;
+    s.window.maximized = glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) == GLFW_TRUE;
+    const std::string text = serializeSettings(s);
+    if (text == lastSavedSettings_) return;  // nothing changed
+    saveSettingsFile(settingsFile_, s);
+    lastSavedSettings_ = text;  // (also after a failed write, so a read-only folder is not retried every second)
 }
 
 void App::frame() {
@@ -283,6 +324,18 @@ void App::frame() {
     }
     pollJob();
     pollAutoReload();
+    if (!glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) && !glfwGetWindowAttrib(window_, GLFW_ICONIFIED)) {
+        int w = 0, h = 0;
+        glfwGetWindowSize(window_, &w, &h);
+        if (w >= 200 && h >= 200) {
+            normalWinW_ = w;
+            normalWinH_ = h;
+        }
+    }
+    if (const double now = glfwGetTime(); now - lastSettingsCheck_ > 1.0) {  // save changes soon, not only on exit
+        lastSettingsCheck_ = now;
+        saveSettings();
+    }
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();

@@ -33,6 +33,10 @@ std::string openFileDialog(GLFWwindow* window);
 // Windows GUI program has no console to print to.
 void showErrorMessage(const std::string& title, const std::string& message);
 
+// Per-user folder for the settings file (not created here): %APPDATA%\\MeshInspector on Windows,
+// $XDG_CONFIG_HOME/meshinspector or ~/.config/meshinspector elsewhere. Returns "" if unknown.
+std::string configDirectory();
+
 // Command line arguments as UTF-8 (the plain argv is not Unicode-safe on Windows).
 std::vector<std::string> commandLineArguments(int argc, char** argv);
 

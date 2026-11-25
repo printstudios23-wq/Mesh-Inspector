@@ -147,6 +147,13 @@ std::string openFileDialog(GLFWwindow* window) {
     return toUtf8(file);
 }
 
+std::string configDirectory() {
+    wchar_t buf[MAX_PATH * 2];
+    const DWORD n = GetEnvironmentVariableW(L"APPDATA", buf, static_cast<DWORD>(std::size(buf)));
+    if (n == 0 || n >= std::size(buf)) return {};
+    return toUtf8(buf) + "\\MeshInspector";
+}
+
 void showErrorMessage(const std::string& title, const std::string& message) {
     auto widen = [](const std::string& s) {
         const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);

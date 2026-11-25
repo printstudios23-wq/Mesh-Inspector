@@ -14,6 +14,7 @@
 
 #include "analysis.h"
 #include "mesh_io.h"
+#include "settings.h"
 
 using namespace mi;
 
@@ -517,6 +518,82 @@ static void testThreeMfCorruption() {
     (void)dir;
 }
 
+static void testSettingsRoundTrip() {
+    Settings a;
+    a.view.wireframe = true;
+    a.view.zUp = false;
+    a.view.vsync = false;
+    a.view.autoReload = true;
+    a.view.showSlivers = false;
+    a.view.background[0] = 0.9f;
+    a.view.meshColor[1] = 0.25f;
+    a.view.backColor[2] = 0.0f;
+    a.view.weldExponent = 7.5f;
+    a.view.analysis.sliverAngleDeg = 2.5;
+    a.window.width = 1111;
+    a.window.height = 777;
+    a.window.maximized = true;
+    a.view.hideUi = true;  // transient: must NOT be saved
+
+    Settings b;
+    parseSettings(serializeSettings(a), b);
+    CHECK(b.view.wireframe && !b.view.zUp && !b.view.vsync && b.view.autoReload && !b.view.showSlivers);
+    CHECK_NEAR(b.view.background[0], 0.9, 1e-4);
+    CHECK_NEAR(b.view.meshColor[1], 0.25, 1e-4);
+    CHECK_NEAR(b.view.backColor[2], 0.0, 1e-4);
+    CHECK_NEAR(b.view.weldExponent, 7.5, 1e-4);
+    CHECK_NEAR(b.view.analysis.weldTolerance, std::pow(10.0, -7.5), 1e-12);
+    CHECK_NEAR(b.view.analysis.sliverAngleDeg, 2.5, 1e-4);
+    CHECK(b.window.width == 1111 && b.window.height == 777 && b.window.maximized);
+    CHECK(!b.view.hideUi);
+    // untouched settings keep their defaults
+    CHECK(b.view.flatShading && b.view.showGrid && b.view.showReport);
+
+    // file round trip, replacing an existing file
+    const fs::path file = tempDir() / "cfg" / "settings.ini";
+    fs::remove_all(file.parent_path());
+    CHECK(saveSettingsFile(file, a));
+    a.view.wireframe = false;
+    CHECK(saveSettingsFile(file, a));
+    Settings c;
+    CHECK(loadSettingsFile(file, c));
+    CHECK(!c.view.wireframe && !c.view.zUp);
+    CHECK(!fs::exists(file.string() + ".tmp"));
+    Settings none;
+    CHECK(!loadSettingsFile(tempDir() / "cfg" / "missing.ini", none));
+}
+
+static void testSettingsAreLenient() {
+    Settings s;
+    parseSettings(
+        "# comment\n"
+        "garbage line without equals\n"
+        "unknown_key = 5\n"
+        "show_grid = false\n"
+        "wireframe = maybe\n"             // not a boolean: ignored
+        "background_color = 2 -1 0.5\n"   // clamped to 0..1
+        "surface_color = 0.5 0.5\n"       // too few numbers: ignored
+        "weld_tolerance_exponent = 99\n"  // clamped to the valid range
+        "sliver_angle_degrees = nan\n"    // not finite: ignored
+        "window_width = -50\n"            // clamped
+        "\r\n   vsync   =   false   \r\n",
+        s);
+    CHECK(!s.view.showGrid);
+    CHECK(!s.view.wireframe);
+    CHECK_NEAR(s.view.background[0], 1.0, 1e-6);
+    CHECK_NEAR(s.view.background[1], 0.0, 1e-6);
+    CHECK_NEAR(s.view.background[2], 0.5, 1e-6);
+    CHECK_NEAR(s.view.meshColor[0], ViewSettings{}.meshColor[0], 1e-6);
+    CHECK_NEAR(s.view.weldExponent, 9.0, 1e-6);
+    CHECK_NEAR(s.view.analysis.sliverAngleDeg, 1.0, 1e-6);
+    CHECK(s.window.width == 0);
+    CHECK(!s.view.vsync);
+    // binary junk must not crash
+    std::string junk;
+    for (int i = 0; i < 2000; ++i) junk += static_cast<char>(i * 37);
+    parseSettings(junk, s);
+}
+
 static void testErrors() {
     Mesh m;
     std::string err;
@@ -570,6 +647,8 @@ int main() {
         {"GLB loader", testGlb},
         {"3MF loader", testThreeMf},
         {"3MF corrupt files", testThreeMfCorruption},
+        {"settings round trip", testSettingsRoundTrip},
+        {"settings parser is lenient", testSettingsAreLenient},
         {"loader error handling", testErrors},
     };
     for (const Test& t : tests) {
