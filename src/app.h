@@ -32,8 +32,9 @@ struct ViewSettings {
     bool showGrid = true;
     bool showGizmo = true;
     bool showReport = true;
+    bool hideUi = false;  // "viewer only" mode: nothing but the model
     bool orthographic = false;
-    bool zUp = false;  // treat the file's +Z as "up" (STL / CAD convention)
+    bool zUp = true;  // treat the file's +Z as "up" (STL / CAD / 3D printing convention)
     // problem overlays
     bool showProblems = true;
     bool showOpenEdges = true;
@@ -102,6 +103,7 @@ private:
     void renderScene();
     void setWindowTitleFor(const std::string& name);
     void resetOptions();
+    void setHideUi(bool hide);
 
     // ---- ui.cpp
     void buildUi();
@@ -113,6 +115,7 @@ private:
     void drawGizmo();
     void drawEmptyState();
     void drawModals();
+    void drawHideHint();
 
     GLFWwindow* window_ = nullptr;
     Renderer renderer_;
@@ -160,6 +163,7 @@ private:
     bool errorPopupPending_ = false;
     int dragButton_ = -1;
     float fps_ = 0;
+    double hideHintUntil_ = 0;  // time until which the "press H" hint is shown
     std::string glInfo_;
 };
 

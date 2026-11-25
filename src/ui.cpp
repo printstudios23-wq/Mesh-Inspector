@@ -86,6 +86,18 @@ ImVec4 sevColor(Sev s) {
 
 void App::buildUi() {
     const ImVec2 size = ImGui::GetMainViewport()->Size;
+    if (view_.hideUi) {
+        // Viewer-only mode: the model fills the whole window. With no title bar left to grab, the
+        // window can still be resized from its edges; H or Esc brings the interface back.
+        viewport_ = {0, 0, size.x, size.y};
+        frameRegions_.titleBarHeight = 0;
+        frameRegions_.menuLeft = frameRegions_.menuRight = 0;
+        frameRegions_.buttonsLeft = static_cast<int>(size.x) + 1;
+        drawEmptyState();
+        drawHideHint();
+        drawModals();
+        return;
+    }
     viewport_.x0 = 0;
     viewport_.y0 = titleBarH_;
     viewport_.x1 = view_.showReport ? size.x - panelW_ : size.x;
@@ -267,6 +279,7 @@ void App::drawMenu(int index) {
             ImGui::MenuItem("Orientation gizmo", nullptr, &view_.showGizmo);
             ImGui::MenuItem("Orthographic projection", nullptr, &view_.orthographic);
             ImGui::MenuItem("Mesh report panel", "Tab", &view_.showReport);
+            if (ImGui::MenuItem("Hide interface", "H")) setHideUi(true);
             ImGui::Separator();
             if (ImGui::BeginMenu("Standard views")) {
                 if (ImGui::MenuItem("Front", "1")) camera_.setView(0, 0);
@@ -381,6 +394,20 @@ void App::drawGizmo() {
         const ImVec2 ts = ImGui::CalcTextSize(a.label);
         dl->AddText(ImVec2(a.tip.x - ts.x * 0.5f, a.tip.y - ts.y * 0.5f), IM_COL32(20, 22, 28, 255), a.label);
     }
+}
+
+void App::drawHideHint() {
+    const double left = hideHintUntil_ - glfwGetTime();
+    if (left <= 0) return;
+    const float s = uiScale_;
+    const char* text = "Press H or Esc to show the interface";
+    const ImVec2 ts = ImGui::CalcTextSize(text);
+    const float alpha = static_cast<float>(std::min(1.0, left));  // fade out during the last second
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    const ImVec2 a((viewport_.x0 + viewport_.x1 - ts.x) * 0.5f - 14.0f * s, viewport_.y1 - ts.y - 40.0f * s);
+    const ImVec2 b(a.x + ts.x + 28.0f * s, a.y + ts.y + 14.0f * s);
+    dl->AddRectFilled(a, b, IM_COL32(0, 0, 0, static_cast<int>(170 * alpha)), 6.0f * s);
+    dl->AddText(ImVec2(a.x + 14.0f * s, a.y + 7.0f * s), IM_COL32(235, 238, 245, static_cast<int>(255 * alpha)), text);
 }
 
 void App::drawEmptyState() {
@@ -719,6 +746,7 @@ void App::drawModals() {
                 {"F  /  Home", "Frame model  /  reset view"},
                 {"1 2 3 4 5 6", "Front, back, left, right, top, bottom"},
                 {"Tab", "Show / hide the report panel"},
+                {"H  /  Esc", "Hide the whole interface (viewer only) / bring it back"},
                 {"Ctrl + O", "Open a file"},
                 {"F5", "Reload the current file"},
                 {"Drag & drop", "Drop a model file onto the window"},

@@ -102,13 +102,17 @@ Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `me
 | Grid | `G` |
 | Front / back / left / right / top / bottom | `1` `2` `3` `4` `5` `6` |
 | Show / hide the report panel | `Tab` |
+| Hide / show the whole interface | `H` (or `Esc` to show it again) |
 | Reload | `F5` |
 
 If the custom title bar ever misbehaves on your system, start the program with `meshinspector --native-frame` to get the
 normal Windows title bar (the menus then sit just below it).
 
-**Up axis:** glTF and most OBJ files use +Y as up, while STL / CAD / slicer files usually use +Z. If a model lies on
-its back, switch **Options > Up axis**.
+**Hide the interface:** press `H` (or **View > Hide interface**) to get a clean view of just the model; `H` or `Esc`
+brings the interface back.
+
+**Up axis:** models are shown Z-up by default (the STL / CAD / slicer convention). glTF and most OBJ files use +Y as
+up, so if one of those lies on its back, switch **Options > Up axis**.
 
 ## What the checks mean
 

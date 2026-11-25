@@ -238,6 +238,12 @@ void App::applyUiScale(float scale) {
     if (ImGui::GetIO().BackendRendererUserData) ImGui_ImplOpenGL3_DestroyDeviceObjects();  // rebuilds the font texture
 }
 
+void App::setHideUi(bool hide) {
+    view_.hideUi = hide;
+    openMenu_ = -1;
+    if (hide) hideHintUntil_ = glfwGetTime() + 3.0;
+}
+
 void App::resetOptions() {
     view_ = ViewSettings{};
     appliedVsync_ = -1;
@@ -498,9 +504,11 @@ void App::handleShortcuts() {
     auto pressed = [](ImGuiKey k) { return ImGui::IsKeyPressed(k, false); };
 
     if (io.KeyCtrl && pressed(ImGuiKey_O)) openDialogRequested_ = true;
+    if (view_.hideUi && pressed(ImGuiKey_Escape)) setHideUi(false);
     if (pressed(ImGuiKey_F5)) reload();
     if (io.KeyCtrl || io.KeyAlt) return;
 
+    if (pressed(ImGuiKey_H)) setHideUi(!view_.hideUi);
     if (pressed(ImGuiKey_W)) view_.wireframe = !view_.wireframe;
     if (pressed(ImGuiKey_G)) view_.showGrid = !view_.showGrid;
     if (pressed(ImGuiKey_F)) frameModel();
