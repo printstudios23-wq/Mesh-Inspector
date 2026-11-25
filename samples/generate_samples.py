@@ -8,6 +8,8 @@
                                1 duplicate triangle and a non-manifold fin
   icosphere_clean.stl        the clean sphere as an STL triangle soup (checks vertex welding)
   icosphere_clean.3mf        the clean sphere as a compressed 3MF package
+  three_parts.obj / .3mf     a cube, a sphere and a cylinder as three separate objects that start out
+                             piled up close together - try "Separate objects" and the move gizmo
 """
 import math
 import struct
@@ -83,11 +85,69 @@ def write_3mf(path, verts, faces):
         z.writestr("3D/3dmodel.model", model)
 
 
+def box(cx, cy, z0, w, d, h):
+    x0, x1, y0, y1, z1 = cx - w / 2, cx + w / 2, cy - d / 2, cy + d / 2, z0 + h
+    v = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
+    f = [(0, 3, 2), (0, 2, 1), (4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4), (2, 3, 7), (2, 7, 6), (0, 4, 7), (0, 7, 3), (1, 2, 6), (1, 6, 5)]
+    return v, f
+
+
+def cylinder(cx, cy, z0, r, h, n=32):
+    v, f = [], []
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        v.append((cx + r * math.cos(a), cy + r * math.sin(a), z0))
+        v.append((cx + r * math.cos(a), cy + r * math.sin(a), z0 + h))
+    v += [(cx, cy, z0), (cx, cy, z0 + h)]
+    bc, tc = 2 * n, 2 * n + 1
+    for k in range(n):
+        a, b = 2 * k, 2 * ((k + 1) % n)
+        f += [(a, b, a + 1), (b, b + 1, a + 1), (bc, b, a), (tc, a + 1, b + 1)]
+    return v, f
+
+
+def merge(parts):
+    verts, faces = [], []
+    for v, f in parts:
+        base = len(verts)
+        verts += v
+        faces += [(a + base, b + base, c + base) for a, b, c in f]
+    return verts, faces
+
+
+def write_3mf_objects(path, parts):
+    objs = ""
+    for i, (verts, faces) in enumerate(parts, 1):
+        v = "".join('    <vertex x="%.6f" y="%.6f" z="%.6f"/>\n' % p for p in verts)
+        t = "".join('    <triangle v1="%d" v2="%d" v3="%d"/>\n' % f for f in faces)
+        objs += '  <object id="%d" type="model" name="part %d">\n   <mesh>\n  <vertices>\n%s  </vertices>\n  <triangles>\n%s  </triangles>\n   </mesh>\n  </object>\n' % (i, i, v, t)
+    items = "".join('  <item objectid="%d"/>\n' % i for i in range(1, len(parts) + 1))
+    model = ('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+             ' <resources>\n' + objs + ' </resources>\n <build>\n' + items + ' </build>\n</model>\n')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
+            ' <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>')
+    ct = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n'
+          ' <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n'
+          ' <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n</Types>')
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", ct)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", model)
+
+
 def main():
     verts, faces = icosphere(3)
     write_obj(os.path.join(HERE, "icosphere_clean.obj"), verts, faces, "clean icosphere: watertight, manifold")
     write_stl_binary(os.path.join(HERE, "icosphere_clean.stl"), verts, faces)
     write_3mf(os.path.join(HERE, "icosphere_clean.3mf"), verts, faces)
+
+    sv, sf = icosphere(2, 9.0)
+    parts = [box(0, 0, 0, 18, 18, 18),
+             ([(x + 13, y + 4, z + 9) for x, y, z in sv], sf),
+             cylinder(-12, -6, 0, 6, 24)]
+    write_3mf_objects(os.path.join(HERE, "three_parts.3mf"), parts)
+    mv, mf = merge(parts)
+    write_obj(os.path.join(HERE, "three_parts.obj"), mv, mf, "cube, sphere and cylinder as three separate objects")
 
     v = list(verts)
     f = [list(t) for t in faces]

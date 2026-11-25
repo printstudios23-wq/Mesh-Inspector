@@ -345,6 +345,7 @@ void App::frame() {
     buildUi();
     handleShortcuts();
     handleViewportInput();
+    drawObjectGizmo();  // after the input, so it matches the camera that is rendered this frame
     renderScene();
 
     ImGui::Render();
@@ -418,12 +419,14 @@ void App::onJobFinished(JobResult&& r) {
         return;
     }
     // Re-loading or re-analysing the file that is already open keeps the camera where it is.
-    const bool reframe = !(r.keepCamera && !model_.path.empty() && model_.path == r.model.path);
+    const bool sameFile = r.keepCamera && !model_.path.empty() && model_.path == r.model.path;
+    const bool reframe = !sameFile;
     model_ = std::move(r.model);
     seenMtime_ = model_.mtime;
     seenSize_ = model_.fileBytes;
 
     renderer_.setMesh(*model_.analyzed);
+    resetObjectState(sameFile);  // a reload keeps the positions the user gave the objects
     updateModelTransform(reframe);
     setWindowTitleFor(model_.path.filename().u8string());
 }
@@ -476,10 +479,20 @@ void App::updateModelTransform(bool reframe) {
         renderer_.setGrid(0.0f, 0.25f, 0.0f, 0.0f, 20);
         return;
     }
-    const AABB& b = model_.analyzed->report.bounds;
-    for (int i = 0; i < 8; ++i) {
-        const Vec3 corner{(i & 1) ? b.max.x : b.min.x, (i & 2) ? b.max.y : b.min.y, (i & 4) ? b.max.z : b.min.z};
-        worldBounds_.expand(transformPoint(modelMatrix_, corner));
+    invModelMatrix_ = view_.zUp ? rotationX(radians(90.0f)) : Mat4::identity();
+    auto addBox = [&](const AABB& box, const Vec3& shift) {
+        for (int i = 0; i < 8; ++i) {
+            const Vec3 corner{(i & 1) ? box.max.x : box.min.x, (i & 2) ? box.max.y : box.min.y, (i & 4) ? box.max.z : box.min.z};
+            worldBounds_.expand(transformPoint(modelMatrix_, corner + shift));
+        }
+    };
+    const AnalyzedMesh& an = *model_.analyzed;
+    bool moved = false;
+    for (const Vec3& o : objectOffsets_) moved = moved || o.x != 0 || o.y != 0 || o.z != 0;
+    if (moved && objectOffsets_.size() == an.objects.size()) {
+        for (size_t i = 0; i < an.objects.size(); ++i) addBox(an.objects[i].bounds, objectOffsets_[i]);
+    } else {
+        addBox(an.report.bounds, Vec3{});
     }
     const Vec3 center = worldBounds_.center();
     const float radius = std::max(worldBounds_.diagonal() * 0.5f, 1e-6f);
@@ -524,15 +537,25 @@ void App::handleViewportInput() {
         for (int b = 0; b < 3; ++b) {
             if (ImGui::IsMouseClicked(b)) {
                 dragButton_ = b;
+                dragDistance_ = 0;
+                // A left press on a handle of the move gizmo moves the selected object instead of orbiting.
+                if (b == 0 && gizmoHover_ >= 0 && !io.KeyCtrl && !io.KeyShift) beginGizmoDrag(gizmoHover_, mp.x, mp.y);
                 break;
             }
         }
     }
     if (dragButton_ >= 0) {
         if (!ImGui::IsMouseDown(dragButton_)) {
+            // A left click that did not turn into a drag selects the object under the cursor.
+            const bool wasClick = dragButton_ == 0 && gizmoDrag_ < 0 && dragDistance_ < 4.0f * uiScale_ && !io.KeyCtrl && !io.KeyShift;
+            if (wasClick) pickAt(mp.x, mp.y);
+            gizmoDrag_ = -1;
             dragButton_ = -1;
+        } else if (gizmoDrag_ >= 0) {
+            updateGizmoDrag(mp.x, mp.y);
         } else {
             const float dx = io.MouseDelta.x, dy = io.MouseDelta.y;
+            dragDistance_ += std::sqrt(dx * dx + dy * dy);
             if (dragButton_ == 0 && io.KeyCtrl) {
                 camera_.zoomCentered(std::pow(1.01f, dy));  // Ctrl + left drag: zoom
             } else if (dragButton_ == 0 && !io.KeyShift) {
@@ -558,6 +581,7 @@ void App::handleShortcuts() {
 
     if (io.KeyCtrl && pressed(ImGuiKey_O)) openDialogRequested_ = true;
     if (view_.hideUi && pressed(ImGuiKey_Escape)) setHideUi(false);
+    else if (pressed(ImGuiKey_Escape) && gizmoDrag_ < 0) selectObject(-1);
     if (pressed(ImGuiKey_F5)) reload();
     if (io.KeyCtrl || io.KeyAlt) return;
 
@@ -615,6 +639,7 @@ void App::renderScene() {
     p.showDegenerate = view_.showDegenerate;
     p.showSlivers = view_.showSlivers;
     p.problemsXray = view_.problemsXray;
+    p.selectedObject = view_.hideUi ? -1 : selectedObject_;
     p.uiScale = uiScale_;
     renderer_.draw(p);
 }

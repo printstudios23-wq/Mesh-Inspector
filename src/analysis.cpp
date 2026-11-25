@@ -120,8 +120,10 @@ AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings) {
     std::vector<Vec3d> normalAcc(nWelded);  // angle-weighted vertex normals
     double volume = 0, area = 0;
 
-    auto addMarker = [&](const Vec3& a, const Vec3& b, const Vec3& c) {
+    std::vector<uint32_t> markerVertex;  // a welded vertex of each marker, to find its object later
+    auto addMarker = [&](const Vec3& a, const Vec3& b, const Vec3& c, uint32_t vertex) {
         ov.degenerateMarkers.push_back((a + b + c) / 3.0f);
+        markerVertex.push_back(vertex);
     };
 
     for (size_t t = 0; t < nTris; ++t) {
@@ -137,7 +139,7 @@ AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings) {
         }
         if (a == b || b == c || a == c) {
             ++rep.collapsedTriangles;
-            addMarker(mesh.positions[o0], mesh.positions[o1], mesh.positions[o2]);
+            addMarker(mesh.positions[o0], mesh.positions[o1], mesh.positions[o2], a);
             continue;
         }
 
@@ -151,7 +153,7 @@ AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings) {
         if (longest <= 0 || area2 / longest <= eps) {
             // thickness (height over the longest edge) below the weld tolerance: effectively a line
             ++rep.zeroAreaTriangles;
-            addMarker(rm.positions[a], rm.positions[b], rm.positions[c]);
+            addMarker(rm.positions[a], rm.positions[b], rm.positions[c], a);
             ov.degenerateEdges.insert(ov.degenerateEdges.end(), {a, b, b, c, c, a});
         } else {
             area += 0.5 * area2;
@@ -265,6 +267,7 @@ AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings) {
             const uint32_t first = boundary[e0].second;
             HoleLoop loop;
             loop.edgeCount = 1;
+            loop.vertex = start;
             loop.perimeter = edgeLen(e0);
             loop.closed = false;
             Vec3d sum = Vec3d(rm.positions[start]) + Vec3d(rm.positions[first]);
@@ -330,12 +333,32 @@ AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings) {
             usedVertex[f[0]] = usedVertex[f[1]] = usedVertex[f[2]] = 1;
         }
         size_t used = 0;
+        std::vector<uint32_t> shellOfRoot(nWelded, kInvalid);
         for (uint32_t v = 0; v < nWelded; ++v) {
             if (!usedVertex[v]) continue;
             ++used;
-            if (uf.find(v) == v) ++rep.shells;
+            if (uf.find(v) == v) {
+                shellOfRoot[v] = static_cast<uint32_t>(rep.shells);
+                ++rep.shells;
+            }
         }
         rep.looseVertices = nWelded - used;
+
+        // Objects: one per shell, unless there are so many that moving them separately is pointless.
+        rm.objectIds.assign(nWelded, 0);
+        if (rep.shells > 0 && rep.shells <= kMaxObjects) {
+            result.objects.resize(rep.shells);
+            for (uint32_t v = 0; v < nWelded; ++v) {
+                if (!usedVertex[v]) continue;
+                const uint32_t id = shellOfRoot[uf.find(v)];
+                rm.objectIds[v] = id;
+                result.objects[id].bounds.expand(rm.positions[v]);
+            }
+            for (const auto& f : faces) ++result.objects[rm.objectIds[f[0]]].triangles;
+        }
+        for (HoleLoop& h : rep.holes) h.object = rm.objectIds[h.vertex];
+        ov.degenerateMarkerObjects.resize(markerVertex.size());
+        for (size_t i = 0; i < markerVertex.size(); ++i) ov.degenerateMarkerObjects[i] = rm.objectIds[markerVertex[i]];
         rep.eulerCharacteristic = static_cast<long long>(used) - static_cast<long long>(rep.edges) + static_cast<long long>(faces.size());
     }
 

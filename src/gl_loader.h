@@ -43,6 +43,9 @@ constexpr GLenum LINK_STATUS = 0x8B82;
 constexpr GLenum INFO_LOG_LENGTH = 0x8B84;
 constexpr GLenum PROGRAM_POINT_SIZE = 0x8642;
 constexpr GLenum MULTISAMPLE = 0x809D;
+constexpr GLenum TEXTURE0 = 0x84C0;
+constexpr GLenum RGBA32F = 0x8814;
+constexpr GLenum CLAMP_TO_EDGE = 0x812F;
 
 #define MI_GL_FUNCTIONS(X)                                                                         \
     X(GLuint, CreateShader, (GLenum type))                                                         \
@@ -65,6 +68,7 @@ constexpr GLenum MULTISAMPLE = 0x809D;
     X(void, Uniform4f, (GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3))           \
     X(void, UniformMatrix3fv, (GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)) \
     X(void, UniformMatrix4fv, (GLint location, GLsizei count, GLboolean transpose, const GLfloat* value)) \
+    X(void, ActiveTexture, (GLenum texture))                                                       \
     X(void, GenVertexArrays, (GLsizei n, GLuint* arrays))                                          \
     X(void, BindVertexArray, (GLuint array))                                                       \
     X(void, DeleteVertexArrays, (GLsizei n, const GLuint* arrays))                                 \

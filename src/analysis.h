@@ -18,7 +18,13 @@ struct AnalysisSettings {
     double sliverAngleDeg = 1.0;
 };
 
+// Upper limit for separately movable objects. Meshes with more disconnected pieces than this
+// (typically "triangle soup" noise) are treated as one object.
+inline constexpr size_t kMaxObjects = 2000;
+
 struct HoleLoop {
+    uint32_t object = 0;  // which object (shell) the hole belongs to
+    uint32_t vertex = 0;  // one vertex on the loop (index into RenderMesh::positions)
     uint32_t edgeCount = 0;
     bool closed = true;  // false if the chain of open edges does not close up
     double perimeter = 0;
@@ -76,6 +82,13 @@ struct RenderMesh {
     std::vector<Vec3> normals;  // smooth, angle-weighted
     std::vector<Vec3> colors;   // empty when the file has no colours
     std::vector<uint32_t> indices;
+    std::vector<uint32_t> objectIds;  // per vertex: index into AnalyzedMesh::objects (0 for loose vertices)
+};
+
+// One connected piece of the mesh ("shell"). Slicers call these objects.
+struct ObjectInfo {
+    AABB bounds;  // in the mesh's own coordinates
+    uint32_t triangles = 0;
 };
 
 // Index lists into RenderMesh::positions that are drawn as problem highlights.
@@ -86,12 +99,14 @@ struct Overlays {
     std::vector<uint32_t> degenerateEdges;    // pairs (zero-area triangles with distinct corners)
     std::vector<uint32_t> sliverTriangles;    // triples
     std::vector<Vec3> degenerateMarkers;      // one point per degenerate triangle
+    std::vector<uint32_t> degenerateMarkerObjects;  // object of each marker
 };
 
 struct AnalyzedMesh {
     RenderMesh render;
     Overlays overlays;
     MeshReport report;
+    std::vector<ObjectInfo> objects;  // empty if there are more than kMaxObjects pieces
 };
 
 AnalyzedMesh analyzeMesh(const Mesh& mesh, const AnalysisSettings& settings);

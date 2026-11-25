@@ -38,6 +38,7 @@ FetchContent_MakeAvailable(cgltf)
 # ---------------------------------------------------------------------------
 add_library(meshinspector_core STATIC
   src/analysis.cpp
+  src/objects.cpp
   src/settings.cpp
   src/mesh_io.cpp
   src/loaders/obj.cpp
@@ -106,6 +107,7 @@ if(MESHINSPECTOR_BUILD_APP)
     src/main.cpp
     src/app.cpp
     src/ui.cpp
+    src/objects_ui.cpp
     src/camera.cpp
     src/renderer.cpp
     src/gl_loader.cpp)

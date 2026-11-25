@@ -290,6 +290,10 @@ void App::drawMenu(int index) {
                 if (ImGui::MenuItem("Bottom", "6")) camera_.setView(0, -90);
                 ImGui::EndMenu();
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Separate objects", nullptr, false, objectCount() >= 2)) separateObjects();
+            if (ImGui::MenuItem("Reset object positions", nullptr, false, objectCount() >= 1)) resetObjectPositions();
+            ImGui::Separator();
             if (ImGui::MenuItem("Frame model", "F", false, !model_.path.empty())) frameModel();
             if (ImGui::MenuItem("Reset view", "Home")) resetView();
             break;
@@ -360,6 +364,11 @@ void App::drawToolbar() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Toggle wireframe  (W)");
     ImGui::SameLine(0.0f, 18.0f * s);
     ImGui::Checkbox("Highlight problems", &view_.showProblems);
+    if (objectCount() >= 2) {
+        ImGui::SameLine(0.0f, 18.0f * s);
+        if (ImGui::Button("Separate objects")) separateObjects();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Lay the objects out side by side on the bed, like a slicer's Arrange.");
+    }
     ImGui::End();
     ImGui::PopStyleVar(2);
 }
@@ -676,12 +685,15 @@ void App::drawReportPanel() {
                     char label[160];
                     std::snprintf(label, sizeof label, "#%d   %u edge%s   %s%s", i + 1, h.edgeCount, h.edgeCount == 1 ? "" : "s",
                                   fmtNum(h.perimeter).c_str(), h.closed ? "" : "   open");
-                    if (ImGui::Selectable(label)) focusOn(h.center, h.radius);
+                    if (ImGui::Selectable(label)) focusOn(h.center + objectOffset(h.object), h.radius);
                 }
             }
             if (r.holeLoops > static_cast<size_t>(shown)) ImGui::TextDisabled("... and %s more", fmtCount(r.holeLoops - static_cast<size_t>(shown)).c_str());
         }
     }
+
+    // ---- objects
+    drawObjectsSection();
 
     // ---- display
     if (ImGui::CollapsingHeader("Display", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -741,6 +753,9 @@ void App::drawModals() {
                 {"Mouse wheel", "Zoom towards the cursor"},
                 {"Ctrl + left drag", "Zoom"},
                 {"Double-click", "Frame the model"},
+                {"Click an object", "Select it (shows the move gizmo)"},
+                {"Drag a gizmo handle", "Move the selected object (arrows: one axis, squares: a plane)"},
+                {"Esc", "Deselect"},
                 {"W", "Toggle wireframe"},
                 {"G", "Toggle grid"},
                 {"F  /  Home", "Frame model  /  reset view"},

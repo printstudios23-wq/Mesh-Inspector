@@ -34,6 +34,11 @@ public:
     void frame(const Vec3& center, float radius);  // fit a sphere into view
     void setView(float yawDeg, float pitchDeg);
 
+    // World-space ray through the point (ndcX, ndcY in [-1,1]) of the view. `dir` is a unit vector.
+    void ray(float ndcX, float ndcY, float aspect, Vec3& origin, Vec3& dir) const;
+    // World units covered by one screen pixel at `depth` in front of the camera.
+    float worldPerPixel(float depth, float viewportHeight) const;
+
     Mat4 viewMatrix() const;
     Mat4 projectionMatrix(float aspect) const;
 

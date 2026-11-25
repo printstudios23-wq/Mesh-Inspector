@@ -72,6 +72,22 @@ private:
     void saveSettings();
     void setHideUi(bool hide);
 
+    // ---- objects_ui.cpp: separate objects, selection and the move gizmo
+    struct GizmoGeometry;
+    size_t objectCount() const { return model_.analyzed ? model_.analyzed->objects.size() : 0; }
+    Vec3 objectOffset(size_t id) const { return id < objectOffsets_.size() ? objectOffsets_[id] : Vec3{}; }
+    void resetObjectState(bool keepOffsets);
+    void selectObject(int id);
+    void separateObjects();
+    void resetObjectPositions();
+    bool viewportPoint(float& ndcX, float& ndcY, float& aspect) const;
+    bool computeGizmo(GizmoGeometry& g) const;
+    int hitTestGizmo(const GizmoGeometry& g, float mx, float my) const;
+    bool beginGizmoDrag(int handle, float mx, float my);
+    void updateGizmoDrag(float mx, float my);
+    void pickAt(float mx, float my);
+    void drawObjectGizmo();
+
     // ---- ui.cpp
     void buildUi();
     void drawTitleBar();
@@ -82,6 +98,7 @@ private:
     void drawGizmo();
     void drawEmptyState();
     void drawModals();
+    void drawObjectsSection();
     void drawHideHint();
 
     GLFWwindow* window_ = nullptr;
@@ -129,6 +146,18 @@ private:
     std::string errorText_;
     bool errorPopupPending_ = false;
     int dragButton_ = -1;
+    float dragDistance_ = 0;  // how far the mouse moved during the current left-button drag
+
+    // separate objects + move gizmo
+    std::vector<Vec3> objectOffsets_;  // per object translation, in the mesh's own coordinates
+    int selectedObject_ = -1;
+    Mat4 invModelMatrix_ = Mat4::identity();
+    int gizmoHover_ = -1;     // 0..2: axis arrows (X, Y, Z of the file); 3..5: plane handles
+    int gizmoDrag_ = -1;      // handle being dragged, -1 if none
+    Vec3 gizmoStartCenter_;   // world-space gizmo centre when the drag began
+    Vec3 gizmoStartOffset_;   // object offset when the drag began
+    Vec3 gizmoStartHit_;      // plane drag: where the mouse ray first hit the plane
+    float gizmoStartT_ = 0;   // axis drag: starting parameter along the axis
     float fps_ = 0;
 
     // persisted settings

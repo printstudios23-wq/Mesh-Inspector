@@ -59,6 +59,24 @@ void Camera::setView(float yaw, float pitch) {
     pitchDeg = std::clamp(pitch, -89.9f, 89.9f);
 }
 
+void Camera::ray(float ndcX, float ndcY, float aspect, Vec3& origin, Vec3& dir) const {
+    const Vec3 f = forward(), r = right(), u = up();
+    const float th = tanHalfFov();
+    if (orthographic) {
+        const float halfH = distance * th;
+        origin = position() + r * (ndcX * aspect * halfH) + u * (ndcY * halfH);
+        dir = f;
+    } else {
+        origin = position();
+        dir = normalize(f + r * (ndcX * aspect * th) + u * (ndcY * th));
+    }
+}
+
+float Camera::worldPerPixel(float depth, float viewportHeight) const {
+    if (viewportHeight <= 0) return 0.0f;
+    return 2.0f * (orthographic ? distance : depth) * tanHalfFov() / viewportHeight;
+}
+
 Mat4 Camera::viewMatrix() const { return lookAt(position(), target, Vec3{0, 1, 0}); }
 
 Mat4 Camera::projectionMatrix(float aspect) const {

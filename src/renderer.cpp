@@ -18,14 +18,20 @@ const char* kMeshVert = R"GLSL(
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
+layout(location = 3) in float aObject;
 uniform mat4 uMV;
 uniform mat4 uProj;
 uniform mat3 uNormalMat;
+uniform sampler2D uOffsets;
 out vec3 vViewPos;
 out vec3 vNormal;
 out vec3 vColor;
+flat out float vObject;
 void main() {
-    vec4 vp = uMV * vec4(aPos, 1.0);
+    int id = int(aObject + 0.5);
+    vec3 offset = texelFetch(uOffsets, ivec2(id & 1023, id >> 10), 0).xyz;
+    vObject = aObject;
+    vec4 vp = uMV * vec4(aPos + offset, 1.0);
     vViewPos = vp.xyz;
     vNormal = uNormalMat * aNormal;
     vColor = aColor;
@@ -38,6 +44,8 @@ const char* kMeshFrag = R"GLSL(
 in vec3 vViewPos;
 in vec3 vNormal;
 in vec3 vColor;
+flat in float vObject;
+uniform float uSelected;
 uniform int uFlat;
 uniform int uOrtho;
 uniform int uUseVertexColor;
@@ -54,6 +62,7 @@ void main() {
 
     vec3 base = (uUseVertexColor != 0) ? vColor : uBaseColor;
     if (uHighlightBack != 0 && !gl_FrontFacing) base = uBackColor;
+    if (abs(vObject - uSelected) < 0.5) base = mix(base, vec3(0.30, 0.62, 1.0), 0.40);  // selected object
 
     vec3 l1 = normalize(vec3(0.35, 0.55, 1.0));
     vec3 l2 = normalize(vec3(-0.6, -0.2, 0.5));
@@ -67,11 +76,19 @@ void main() {
 const char* kFlatVert = R"GLSL(
 #version 330 core
 layout(location = 0) in vec3 aPos;
+layout(location = 3) in float aObject;
 uniform mat4 uMVP;
 uniform float uBias;
 uniform float uPointSize;
+uniform int uUseOffsets;
+uniform sampler2D uOffsets;
 void main() {
-    gl_Position = uMVP * vec4(aPos, 1.0);
+    vec3 offset = vec3(0.0);
+    if (uUseOffsets != 0) {
+        int id = int(aObject + 0.5);
+        offset = texelFetch(uOffsets, ivec2(id & 1023, id >> 10), 0).xyz;
+    }
+    gl_Position = uMVP * vec4(aPos + offset, 1.0);
     gl_Position.z -= uBias * gl_Position.w;  // pull towards the camera to avoid z-fighting
     gl_PointSize = uPointSize;
 }
@@ -146,11 +163,20 @@ bool Renderer::init(std::string& error) {
     if (!flat_.id) return false;
 
     // mesh_.loc: 0 MV, 1 Proj, 2 NormalMat, 3 Flat, 4 Ortho, 5 UseVertexColor, 6 HighlightBack, 7 BaseColor, 8 BackColor
-    const char* meshUniforms[] = {"uMV", "uProj", "uNormalMat", "uFlat", "uOrtho", "uUseVertexColor", "uHighlightBack", "uBaseColor", "uBackColor"};
+    const char* meshUniforms[] = {"uMV", "uProj", "uNormalMat", "uFlat", "uOrtho", "uUseVertexColor", "uHighlightBack", "uBaseColor", "uBackColor", "uSelected", "uOffsets"};
     for (size_t i = 0; i < std::size(meshUniforms); ++i) mesh_.loc[i] = GetUniformLocation(mesh_.id, meshUniforms[i]);
     // flat_.loc: 0 MVP, 1 Bias, 2 PointSize, 3 Color, 4 RoundPoint
-    const char* flatUniforms[] = {"uMVP", "uBias", "uPointSize", "uColor", "uRoundPoint"};
+    const char* flatUniforms[] = {"uMVP", "uBias", "uPointSize", "uColor", "uRoundPoint", "uUseOffsets", "uOffsets"};
     for (size_t i = 0; i < std::size(flatUniforms); ++i) flat_.loc[i] = GetUniformLocation(flat_.id, flatUniforms[i]);
+
+    // Both programs read the object offsets from texture unit 0.
+    UseProgram(mesh_.id);
+    Uniform1i(mesh_.loc[10], 0);
+    UseProgram(flat_.id);
+    Uniform1i(flat_.loc[6], 0);
+    UseProgram(0);
+    glGenTextures(1, &offsetTex_);
+    setObjectOffsets({});
 
     GLfloat range[2] = {1, 1};
     glGetFloatv(GL_LINE_WIDTH_RANGE, range);
@@ -194,6 +220,8 @@ void Renderer::shutdown() {
     if (gridVao_) DeleteVertexArrays(1, &gridVao_);
     if (gridVbo_) DeleteBuffers(1, &gridVbo_);
     gridVao_ = gridVbo_ = 0;
+    if (offsetTex_) glDeleteTextures(1, &offsetTex_);
+    offsetTex_ = 0;
     if (mesh_.id) DeleteProgram(mesh_.id);
     if (flat_.id) DeleteProgram(flat_.id);
     mesh_.id = flat_.id = 0;
@@ -203,7 +231,7 @@ void Renderer::shutdown() {
 void Renderer::makeSet(IndexSet& s, const std::vector<uint32_t>& indices, bool fullAttribs) {
     destroySet(s);
     if (indices.empty()) return;
-    constexpr GLsizei kStride = 9 * sizeof(float);
+    constexpr GLsizei kStride = 10 * sizeof(float);
     GenVertexArrays(1, &s.vao);
     BindVertexArray(s.vao);
     BindBuffer(ARRAY_BUFFER, vbo_);
@@ -215,6 +243,8 @@ void Renderer::makeSet(IndexSet& s, const std::vector<uint32_t>& indices, bool f
         EnableVertexAttribArray(2);
         VertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, kStride, reinterpret_cast<const void*>(6 * sizeof(float)));
     }
+    EnableVertexAttribArray(3);  // object id
+    VertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, kStride, reinterpret_cast<const void*>(9 * sizeof(float)));
     GenBuffers(1, &s.ebo);
     BindBuffer(ELEMENT_ARRAY_BUFFER, s.ebo);
     BufferData(ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indices.size() * sizeof(uint32_t)), indices.data(), STATIC_DRAW);
@@ -229,12 +259,13 @@ void Renderer::setMesh(const AnalyzedMesh& m) {
 
     meshHasColors_ = !r.colors.empty();
     std::vector<float> data;
-    data.reserve(r.positions.size() * 9);
+    data.reserve(r.positions.size() * 10);
     for (size_t i = 0; i < r.positions.size(); ++i) {
         const Vec3& p = r.positions[i];
         const Vec3& n = r.normals[i];
         const Vec3 c = meshHasColors_ ? r.colors[i] : Vec3{1, 1, 1};
-        data.insert(data.end(), {p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z});
+        const float obj = i < r.objectIds.size() ? static_cast<float>(r.objectIds[i]) : 0.0f;
+        data.insert(data.end(), {p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z, obj});
     }
     GenBuffers(1, &vbo_);
     BindBuffer(ARRAY_BUFFER, vbo_);
@@ -252,10 +283,18 @@ void Renderer::setMesh(const AnalyzedMesh& m) {
         GenBuffers(1, &markerVbo_);
         BindVertexArray(markerVao_);
         BindBuffer(ARRAY_BUFFER, markerVbo_);
-        BufferData(ARRAY_BUFFER, static_cast<GLsizeiptr>(m.overlays.degenerateMarkers.size() * sizeof(Vec3)),
-                   m.overlays.degenerateMarkers.data(), STATIC_DRAW);
+        std::vector<float> markers;
+        markers.reserve(m.overlays.degenerateMarkers.size() * 4);
+        for (size_t i = 0; i < m.overlays.degenerateMarkers.size(); ++i) {
+            const Vec3& p = m.overlays.degenerateMarkers[i];
+            const float obj = i < m.overlays.degenerateMarkerObjects.size() ? static_cast<float>(m.overlays.degenerateMarkerObjects[i]) : 0.0f;
+            markers.insert(markers.end(), {p.x, p.y, p.z, obj});
+        }
+        BufferData(ARRAY_BUFFER, static_cast<GLsizeiptr>(markers.size() * sizeof(float)), markers.data(), STATIC_DRAW);
         EnableVertexAttribArray(0);
-        VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), reinterpret_cast<const void*>(0));
+        VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<const void*>(0));
+        EnableVertexAttribArray(3);
+        VertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<const void*>(3 * sizeof(float)));
         BindVertexArray(0);
         markerCount_ = static_cast<GLsizei>(m.overlays.degenerateMarkers.size());
     }
@@ -298,12 +337,32 @@ void Renderer::setGrid(float planeY, float cell, float cx, float cz, int halfCou
     BindVertexArray(0);
 }
 
-void Renderer::setFlat(const Mat4& mvp, float r, float g, float b, float a, float bias, float pointSize, bool round) {
+void Renderer::setFlat(const Mat4& mvp, float r, float g, float b, float a, float bias, float pointSize, bool round, bool objectOffsets) {
     UniformMatrix4fv(flat_.loc[0], 1, GL_FALSE, mvp.m);
     Uniform1f(flat_.loc[1], bias);
     Uniform1f(flat_.loc[2], pointSize);
     Uniform4f(flat_.loc[3], r, g, b, a);
     Uniform1i(flat_.loc[4], round ? 1 : 0);
+    Uniform1i(flat_.loc[5], objectOffsets ? 1 : 0);
+}
+
+void Renderer::setObjectOffsets(const std::vector<Vec3>& offsets) {
+    constexpr int kWidth = 1024;
+    const int rows = std::max(1, static_cast<int>((offsets.size() + kWidth - 1) / kWidth));
+    std::vector<float> texels(static_cast<size_t>(kWidth) * static_cast<size_t>(rows) * 4, 0.0f);
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        texels[i * 4] = offsets[i].x;
+        texels[i * 4 + 1] = offsets[i].y;
+        texels[i * 4 + 2] = offsets[i].z;
+    }
+    ActiveTexture(TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, offsetTex_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(RGBA32F), kWidth, rows, 0, GL_RGBA, GL_FLOAT, texels.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, static_cast<GLint>(CLAMP_TO_EDGE));
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, static_cast<GLint>(CLAMP_TO_EDGE));
 }
 
 void Renderer::draw(const FrameParams& f) {
@@ -330,6 +389,8 @@ void Renderer::draw(const FrameParams& f) {
     const Mat4 mvp = f.proj * mv;
     const bool lightBg = luminance(f.background) > 0.5f;
 
+    ActiveTexture(TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, offsetTex_);
     UseProgram(flat_.id);
 
     // ------------------------------------------------------------- ground grid
@@ -337,11 +398,11 @@ void Renderer::draw(const FrameParams& f) {
         const Vec3 gridCol = lightBg ? f.background * 0.80f : Vec3{f.background.x + 0.13f, f.background.y + 0.13f, f.background.z + 0.13f};
         BindVertexArray(gridVao_);
         glLineWidth(1.0f);
-        setFlat(viewProj, gridCol.x, gridCol.y, gridCol.z, 1.0f, 0.0f);
+        setFlat(viewProj, gridCol.x, gridCol.y, gridCol.z, 1.0f, 0.0f, 1.0f, false, false);
         glDrawArrays(GL_LINES, 0, gridMinorVerts_);
-        setFlat(viewProj, 0.80f, 0.28f, 0.28f, 1.0f, 0.0f);  // X axis
+        setFlat(viewProj, 0.80f, 0.28f, 0.28f, 1.0f, 0.0f, 1.0f, false, false);  // X axis
         glDrawArrays(GL_LINES, gridMinorVerts_, 2);
-        setFlat(viewProj, 0.30f, 0.45f, 0.90f, 1.0f, 0.0f);  // Z axis
+        setFlat(viewProj, 0.30f, 0.45f, 0.90f, 1.0f, 0.0f, 1.0f, false, false);  // Z axis
         glDrawArrays(GL_LINES, gridMinorVerts_ + 2, 2);
         BindVertexArray(0);
     }
@@ -368,6 +429,7 @@ void Renderer::draw(const FrameParams& f) {
         Uniform1i(mesh_.loc[6], f.highlightBackFaces ? 1 : 0);
         Uniform3f(mesh_.loc[7], f.meshColor.x, f.meshColor.y, f.meshColor.z);
         Uniform3f(mesh_.loc[8], f.backColor.x, f.backColor.y, f.backColor.z);
+        Uniform1f(mesh_.loc[9], static_cast<float>(f.selectedObject));
         BindVertexArray(mainSet_.vao);
         glDrawElements(GL_TRIANGLES, mainSet_.count, GL_UNSIGNED_INT, nullptr);
         UseProgram(flat_.id);

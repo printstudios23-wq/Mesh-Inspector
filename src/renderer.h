@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "analysis.h"
 #include "gl_loader.h"
@@ -38,6 +39,8 @@ struct FrameParams {
     bool showSlivers = true;
     bool problemsXray = false;  // draw problem markers through the surface
 
+    int selectedObject = -1;  // object tinted as selected (-1 = none)
+
     float uiScale = 1.0f;
 };
 
@@ -51,6 +54,8 @@ public:
 
     void setMesh(const AnalyzedMesh& mesh);
     void clearMesh();
+    // Per-object translations in the mesh's own coordinates (one entry per object).
+    void setObjectOffsets(const std::vector<Vec3>& offsets);
     // Ground grid lying in the plane y = planeY, centred at (centerX, centerZ).
     void setGrid(float planeY, float cell, float centerX, float centerZ, int halfCount);
 
@@ -72,7 +77,8 @@ private:
 
     void makeSet(IndexSet& set, const std::vector<uint32_t>& indices, bool fullAttribs);
     void destroySet(IndexSet& set);
-    void setFlat(const Mat4& mvp, float r, float g, float b, float a, float bias, float pointSize = 1.0f, bool round = false);
+    void setFlat(const Mat4& mvp, float r, float g, float b, float a, float bias, float pointSize = 1.0f, bool round = false,
+                 bool objectOffsets = true);
 
     Program mesh_;
     Program flat_;
@@ -81,6 +87,8 @@ private:
     GLuint markerVao_ = 0, markerVbo_ = 0;
     GLsizei markerCount_ = 0;
     bool meshHasColors_ = false;
+
+    GLuint offsetTex_ = 0;  // RGBA32F, 1024 texels wide: one translation per object
 
     GLuint gridVao_ = 0, gridVbo_ = 0;
     GLsizei gridMinorVerts_ = 0;

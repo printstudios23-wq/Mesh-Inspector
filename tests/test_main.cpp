@@ -14,6 +14,7 @@
 
 #include "analysis.h"
 #include "mesh_io.h"
+#include "objects.h"
 #include "settings.h"
 
 using namespace mi;
@@ -233,6 +234,149 @@ static void testLooseVerticesAndShells() {
     CHECK(r.closedManifold);
     CHECK(r.eulerCharacteristic == 4);
     CHECK(r.genus == 0);
+}
+
+// Several separate unit cubes, spread out along X.
+static Mesh makeCubes(int count) {
+    const Mesh c = makeCube();
+    Mesh m;
+    for (int k = 0; k < count; ++k) {
+        const uint32_t base = static_cast<uint32_t>(m.positions.size());
+        for (const Vec3& p : c.positions) m.positions.push_back({p.x * (1.0f + 0.5f * static_cast<float>(k)) + 3.0f * static_cast<float>(k), p.y, p.z + 10.0f});
+        for (uint32_t i : c.indices) m.indices.push_back(base + i);
+    }
+    return m;
+}
+
+static void testObjects() {
+    const AnalyzedMesh a = analyze(makeCubes(3));
+    CHECK(a.report.shells == 3);
+    CHECK(a.objects.size() == 3);
+    CHECK(a.render.objectIds.size() == a.render.positions.size());
+    for (const ObjectInfo& o : a.objects) CHECK(o.triangles == 12);
+    // every vertex belongs to the object whose bounds contain it
+    for (size_t v = 0; v < a.render.positions.size(); ++v) {
+        const AABB& b = a.objects[a.render.objectIds[v]].bounds;
+        const Vec3 p = a.render.positions[v];
+        CHECK(p.x >= b.min.x - 1e-5f && p.x <= b.max.x + 1e-5f);
+    }
+    // a hole belongs to the object that has it
+    Mesh open = makeCubes(2);
+    open.indices.erase(open.indices.begin() + 36 + 6, open.indices.begin() + 36 + 12);  // top quad of the 2nd cube
+    const AnalyzedMesh h = analyze(open);
+    CHECK(h.report.holes.size() == 1);
+    if (!h.report.holes.empty()) CHECK(h.report.holes[0].object == 1);
+    // a degenerate triangle's marker belongs to its object
+    Mesh deg = makeCubes(2);
+    deg.indices.insert(deg.indices.end(), {8, 8, 9});  // collapsed triangle on the 2nd cube
+    const AnalyzedMesh d = analyze(deg);
+    CHECK(d.overlays.degenerateMarkers.size() == 1 && d.overlays.degenerateMarkerObjects.size() == 1);
+    if (!d.overlays.degenerateMarkerObjects.empty()) CHECK(d.overlays.degenerateMarkerObjects[0] == 1);
+    // too many pieces: not separately movable
+    Mesh soup;
+    for (size_t k = 0; k < kMaxObjects + 5; ++k) {
+        const float x = static_cast<float>(k) * 2.0f;
+        const uint32_t b = static_cast<uint32_t>(soup.positions.size());
+        soup.positions.insert(soup.positions.end(), {{x, 0, 0}, {x + 1, 0, 0}, {x, 1, 0}});
+        soup.indices.insert(soup.indices.end(), {b, b + 1, b + 2});
+    }
+    const AnalyzedMesh s = analyze(soup);
+    CHECK(s.report.shells == kMaxObjects + 5);
+    CHECK(s.objects.empty());
+}
+
+static void testArrange() {
+    // objects of different sizes, all overlapping each other and floating at different heights
+    std::vector<AABB> boxes;
+    for (int i = 0; i < 9; ++i) {
+        AABB b;
+        const float s = 1.0f + 0.7f * static_cast<float>(i % 4);
+        b.expand({0.0f, 0.0f, 2.0f * static_cast<float>(i)});
+        b.expand({s, s * 1.5f, 2.0f * static_cast<float>(i) + 1.0f});
+        boxes.push_back(b);
+    }
+    for (int up : {2, 1}) {
+        const auto off = arrangeObjects(boxes, up);
+        CHECK(off.size() == boxes.size());
+        const int gv = up == 2 ? 1 : 2;
+        auto c = [](const Vec3& v, int i) { return i == 0 ? v.x : (i == 1 ? v.y : v.z); };
+        // use a rotated copy of the boxes for the Y-up case so the data really is "Y up"
+        std::vector<AABB> bx;
+        for (const AABB& b : boxes) {
+            AABB r;
+            r.expand(up == 2 ? b.min : Vec3{b.min.x, b.min.z, b.min.y});
+            r.expand(up == 2 ? b.max : Vec3{b.max.x, b.max.z, b.max.y});
+            bx.push_back(r);
+        }
+        const auto offs = arrangeObjects(bx, up);
+        float level = 1e30f, lo = 1e30f, hi = -1e30f;
+        for (size_t i = 0; i < bx.size(); ++i) {
+            AABB m;
+            m.expand(bx[i].min + offs[i]);
+            m.expand(bx[i].max + offs[i]);
+            level = std::min(level, c(m.min, up));
+            CHECK_NEAR(c(m.min, up), c(bx[0].min + offs[0], up), 1e-4);  // everything rests on the same level
+            lo = std::min(lo, c(m.min, 0));
+            hi = std::max(hi, c(m.max, 0));
+            for (size_t j = i + 1; j < bx.size(); ++j) {  // no two footprints overlap
+                AABB n;
+                n.expand(bx[j].min + offs[j]);
+                n.expand(bx[j].max + offs[j]);
+                const bool overlapU = m.min.x < n.max.x && n.min.x < m.max.x;
+                const bool overlapV = c(m.min, gv) < c(n.max, gv) && c(n.min, gv) < c(m.max, gv);
+                CHECK(!(overlapU && overlapV));
+            }
+        }
+        CHECK(hi - lo > 0);
+        (void)off;
+    }
+    CHECK(arrangeObjects({}, 2).empty());
+    // a single object only drops to the level and stays centred
+    AABB one;
+    one.expand({5, 5, 5});
+    one.expand({7, 8, 9});
+    const auto single = arrangeObjects({one}, 2);
+    CHECK_NEAR(single[0].x, 0.0, 1e-5);
+    CHECK_NEAR(single[0].y, 0.0, 1e-5);
+    CHECK_NEAR(single[0].z, 0.0, 1e-5);
+}
+
+static void testPicking() {
+    const AnalyzedMesh a = analyze(makeCubes(2));  // cube 0: x 0..1, cube 1: x 3..4.5; both z 10..11
+    std::vector<Vec3> offs(2);
+    float dist = 0;
+    // ray straight down +X... from the side at z=10.5, y=0.5
+    CHECK(pickObject(a, offs, {-5, 0.5f, 10.5f}, {1, 0, 0}, &dist) == 0);
+    CHECK_NEAR(dist, 5.0, 1e-4);
+    CHECK(pickObject(a, offs, {2, 0.5f, 20.0f}, {0, 0, -1}) == -1);       // between the cubes
+    CHECK(pickObject(a, offs, {3.2f, 0.5f, 20.0f}, {0, 0, -1}) == 1);      // from above, onto cube 1
+    CHECK(pickObject(a, offs, {6, 0.5f, 10.5f}, {1, 0, 0}) == -1);         // pointing away
+    // moving an object moves what can be picked
+    offs[1] = {0, 0, 50};
+    CHECK(pickObject(a, offs, {3.2f, 0.5f, 100.0f}, {0, 0, -1}) == 1);
+    CHECK(pickObject(a, offs, {3.2f, 0.5f, 20.0f}, {0, 0, -1}) == -1);
+    // the nearer of two overlapping objects wins: cube 1 (x 3..4.5) moved by -3.5 spans x -0.5..1.0
+    offs[1] = {-3.5f, 0, 0};
+    offs[0] = {0, 0, 0};
+    CHECK(pickObject(a, offs, {-5, 0.5f, 10.5f}, {1, 0, 0}, &dist) == 1);
+    CHECK_NEAR(dist, 4.5, 1e-4);
+}
+
+static void testGizmoMath() {
+    float t = 0;
+    // ray along +Z at x=2 passes the X axis at x=2
+    CHECK(rayLineParameter({2, 0, -5}, {0, 0, 1}, {0, 0, 0}, {1, 0, 0}, t));
+    CHECK_NEAR(t, 2.0, 1e-5);
+    // along Y axis through (1,1,1): ray from above at z...
+    CHECK(rayLineParameter({1, 1, 10}, {0, 0, -1}, {1, 0, 1}, {0, 1, 0}, t));
+    CHECK_NEAR(t, 1.0, 1e-5);
+    CHECK(!rayLineParameter({0, 0, 5}, {1, 0, 0}, {0, 0, 0}, {1, 0, 0}, t));  // parallel
+    Vec3 hit;
+    CHECK(rayPlaneIntersection({1, 2, 10}, {0, 0, -1}, {0, 0, 3}, {0, 0, 1}, hit));
+    CHECK_NEAR(hit.x, 1.0, 1e-5);
+    CHECK_NEAR(hit.z, 3.0, 1e-5);
+    CHECK(!rayPlaneIntersection({1, 2, 10}, {1, 0, 0}, {0, 0, 3}, {0, 0, 1}, hit));   // parallel
+    CHECK(!rayPlaneIntersection({1, 2, 10}, {0, 0, 1}, {0, 0, 3}, {0, 0, 1}, hit));   // plane is behind
 }
 
 static void testEmptyAndTiny() {
@@ -636,6 +780,10 @@ int main() {
         {"duplicate triangle", testDuplicateTriangle},
         {"sliver triangle", testSliver},
         {"loose vertices + shells", testLooseVerticesAndShells},
+        {"objects (shells)", testObjects},
+        {"arrange objects", testArrange},
+        {"picking objects", testPicking},
+        {"gizmo ray math", testGizmoMath},
         {"empty / tiny meshes", testEmptyAndTiny},
         {"OBJ loader", testObj},
         {"ASCII STL loader", testStlAscii},

@@ -21,6 +21,10 @@ checkbox, and tells you **how many** problems there are and **where** they are (
 - **Wireframe checkbox**, optional wireframe overlay on the shaded surface, flat or smooth shading, back faces
   shown in a different colour (an easy way to spot inverted normals)
 - Orbit / pan / zoom (zoom goes towards the cursor), standard views, orthographic projection, ground grid, axis gizmo
+- **Separate objects:** files with several disconnected pieces (a 3MF plate, an OBJ with multiple parts ...) are split
+  into objects. Click one (in the 3D view or in the **Objects** list) to select it and drag the **move gizmo** — arrows
+  move along one axis, the squares slide it in a plane. **Separate objects** lays the pieces out side by side on the
+  bed with gaps, like a slicer's Arrange; **Reset positions** puts everything back
 - **Reload (F5)** and optional **auto-reload when the file changes** — handy while you iterate on a generator or exporter
 - Drag & drop files onto the window, or pass a file on the command line
 - Menus (File / View / Options / Help) live in the title bar, next to the window buttons
@@ -97,6 +101,8 @@ Open a file with **File > Open** (`Ctrl+O`), drop it onto the window, or run `me
 | Orbit | left mouse drag |
 | Pan | right or middle drag, or `Shift` + left drag |
 | Zoom | mouse wheel (towards the cursor), or `Ctrl` + left drag |
+| Select an object | click it (click empty space or `Esc` to deselect) |
+| Move the selected object | drag a gizmo arrow (one axis) or square (a plane) |
 | Frame the model | `F` or double-click |
 | Reset view | `Home` |
 | Wireframe | `W` or the **Wireframe** checkbox |
@@ -141,7 +147,8 @@ Not checked yet: self-intersections and wall thickness.
 
 The `samples/` folder contains a clean sphere (`icosphere_clean.obj` / `.stl`) and `icosphere_defects.obj`, which has
 holes, flipped and duplicate triangles, degenerate triangles and a non-manifold fin on purpose. They are produced by
-`samples/generate_samples.py`.
+`samples/generate_samples.py`. `three_parts.3mf` / `.obj` hold a cube, a sphere and a cylinder as three objects piled up
+close together — open it and try **Separate objects** and the move gizmo.
 
 ## Project layout
 
@@ -149,6 +156,7 @@ holes, flipped and duplicate triangles, degenerate triangles and a non-manifold 
 src/analysis.*      mesh analysis (welding, topology, triangle quality)
 src/loaders/        OBJ, STL, 3MF (with its own ZIP/inflate), PLY, OFF and glTF readers
 src/mesh_io.*       picks the loader from the file extension
+src/objects.*       separate objects: arranging, picking with a ray, gizmo ray maths
 src/renderer.*      OpenGL 3.3 rendering (surface, wireframe, problem overlays, grid)
 src/camera.*        orbit camera
 src/app.*, ui.cpp   window, input, background loading, Dear ImGui interface
@@ -162,6 +170,7 @@ The analysis and loader code (`meshinspector_core`) has no GUI or OpenGL depende
 
 - self-intersection and minimum wall thickness checks, automatic repair (fill holes, fix winding, remove degenerate triangles)
 - FBX support, 3MF colours / materials, texture display, Draco compressed glTF
+- rotate / scale gizmo, snapping, export of the rearranged scene (positions are not saved yet)
 - export of the cleaned mesh, side-by-side comparison of two files
 - remember window and options between runs, recent files
 - keyboard-accessible menus
