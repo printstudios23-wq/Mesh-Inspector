@@ -7,10 +7,12 @@
                                2 holes, 3 flipped triangles, 2 degenerate triangles,
                                1 duplicate triangle and a non-manifold fin
   icosphere_clean.stl        the clean sphere as an STL triangle soup (checks vertex welding)
+  icosphere_clean.3mf        the clean sphere as a compressed 3MF package
 """
 import math
 import struct
 import os
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -63,10 +65,29 @@ def write_stl_binary(path, verts, faces):
             f.write(struct.pack("<H", 0))
 
 
+def write_3mf(path, verts, faces):
+    v = "".join('    <vertex x="%.6f" y="%.6f" z="%.6f"/>\n' % p for p in verts)
+    t = "".join('    <triangle v1="%d" v2="%d" v3="%d"/>\n' % f for f in faces)
+    model = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+             '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+             ' <resources>\n  <object id="1" type="model">\n   <mesh>\n  <vertices>\n' + v + '  </vertices>\n  <triangles>\n' + t +
+             '  </triangles>\n   </mesh>\n  </object>\n </resources>\n <build>\n  <item objectid="1"/>\n </build>\n</model>\n')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
+            ' <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>')
+    ct = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n'
+          ' <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n'
+          ' <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n</Types>')
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", ct)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", model)
+
+
 def main():
     verts, faces = icosphere(3)
     write_obj(os.path.join(HERE, "icosphere_clean.obj"), verts, faces, "clean icosphere: watertight, manifold")
     write_stl_binary(os.path.join(HERE, "icosphere_clean.stl"), verts, faces)
+    write_3mf(os.path.join(HERE, "icosphere_clean.3mf"), verts, faces)
 
     v = list(verts)
     f = [list(t) for t in faces]

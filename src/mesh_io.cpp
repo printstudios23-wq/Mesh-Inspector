@@ -45,10 +45,10 @@ bool readFile(const std::filesystem::path& path, std::vector<char>& buf, size_t&
 
 bool isSupportedMeshFile(const std::filesystem::path& path) {
     const std::string e = lowerExt(path);
-    return e == ".obj" || e == ".stl" || e == ".ply" || e == ".off" || e == ".glb" || e == ".gltf";
+    return e == ".obj" || e == ".stl" || e == ".ply" || e == ".off" || e == ".3mf" || e == ".glb" || e == ".gltf";
 }
 
-const char* supportedFormatsText() { return "OBJ, STL, PLY, OFF, glTF / GLB"; }
+const char* supportedFormatsText() { return "OBJ, STL, 3MF, PLY, OFF, glTF / GLB"; }
 
 bool loadMeshFile(const std::filesystem::path& path, Mesh& out, std::string& error) {
     out = Mesh{};
@@ -58,12 +58,13 @@ bool loadMeshFile(const std::filesystem::path& path, Mesh& out, std::string& err
         bool ok = false;
         if (ext == ".gltf" || ext == ".glb") {
             ok = loadGltf(path, out, error);
-        } else if (ext == ".obj" || ext == ".stl" || ext == ".ply" || ext == ".off") {
+        } else if (ext == ".obj" || ext == ".stl" || ext == ".ply" || ext == ".off" || ext == ".3mf") {
             std::vector<char> buf;
             size_t size = 0;
             if (!readFile(path, buf, size, error)) return false;
             if (ext == ".obj") ok = loadObj(buf.data(), size, out, error);
             else if (ext == ".stl") ok = loadStl(buf.data(), size, out, error);
+            else if (ext == ".3mf") ok = loadThreeMf(buf.data(), size, out, error);
             else if (ext == ".ply") ok = loadPly(buf.data(), size, out, error);
             else ok = loadOff(buf.data(), size, out, error);
         } else {

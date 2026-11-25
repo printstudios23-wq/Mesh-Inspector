@@ -32,6 +32,7 @@ checkbox, and tells you **how many** problems there are and **where** they are (
 | --- | --- | --- |
 | Wavefront OBJ | `.obj` | polygons are triangulated, negative indices supported, optional vertex colours |
 | STL | `.stl` | binary and ASCII |
+| 3MF | `.3mf` | build transforms, components and multi-file (slicer) packages; colours / materials are ignored |
 | PLY | `.ply` | ASCII and binary (little / big endian), vertex colours |
 | OFF | `.off` | including `COFF` |
 | glTF 2.0 | `.gltf`, `.glb` | node transforms applied; Draco / meshopt compressed files are not supported yet |
@@ -142,7 +143,7 @@ holes, flipped and duplicate triangles, degenerate triangles and a non-manifold 
 
 ```
 src/analysis.*      mesh analysis (welding, topology, triangle quality)
-src/loaders/        OBJ, STL, PLY, OFF and glTF readers
+src/loaders/        OBJ, STL, 3MF (with its own ZIP/inflate), PLY, OFF and glTF readers
 src/mesh_io.*       picks the loader from the file extension
 src/renderer.*      OpenGL 3.3 rendering (surface, wireframe, problem overlays, grid)
 src/camera.*        orbit camera
@@ -156,7 +157,7 @@ The analysis and loader code (`meshinspector_core`) has no GUI or OpenGL depende
 ## Ideas for later
 
 - self-intersection and minimum wall thickness checks, automatic repair (fill holes, fix winding, remove degenerate triangles)
-- 3MF and FBX support, texture display, Draco compressed glTF
+- FBX support, 3MF colours / materials, texture display, Draco compressed glTF
 - export of the cleaned mesh, side-by-side comparison of two files
 - remember window and options between runs, recent files
 - keyboard-accessible menus

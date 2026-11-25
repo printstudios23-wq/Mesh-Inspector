@@ -43,6 +43,8 @@ add_library(meshinspector_core STATIC
   src/loaders/stl.cpp
   src/loaders/ply.cpp
   src/loaders/off.cpp
+  src/loaders/threemf.cpp
+  src/loaders/zip.cpp
   src/loaders/gltf.cpp)
 target_include_directories(meshinspector_core PUBLIC src)
 target_include_directories(meshinspector_core SYSTEM PRIVATE ${cgltf_SOURCE_DIR})
@@ -60,6 +62,8 @@ if(MESHINSPECTOR_BUILD_TESTS)
   enable_testing()
   add_executable(meshinspector_tests tests/test_main.cpp)
   target_link_libraries(meshinspector_tests PRIVATE meshinspector_core)
+  target_compile_definitions(meshinspector_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
+    SAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/samples")
   if(MSVC)
     target_compile_options(meshinspector_tests PRIVATE /W4 /utf-8)
   endif()

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -460,6 +461,62 @@ static void testGlb() {
     CHECK_NEAR(a.report.bounds.min.x, 10.0, 1e-5);
 }
 
+static void testThreeMf() {
+    const fs::path dir = TEST_DATA_DIR;
+    // deflate-compressed and stored archives must give the same result; the build item moves it +10 in X
+    for (const char* name : {"cube.3mf", "cube_stored.3mf"}) {
+        const Mesh m = loadOrFail(dir / name);
+        CHECK(m.format == "3MF");
+        expectCube(m, name);
+        CHECK_NEAR(analyze(m).report.bounds.min.x, 10.0, 1e-5);
+    }
+    // multi-file package: the cube is a component placed twice, once mirrored
+    const Mesh c = loadOrFail(dir / "components.3mf");
+    const MeshReport r = analyze(c).report;
+    CHECK(r.triangles == 24);
+    CHECK(r.shells == 2);
+    CHECK(r.closedManifold);   // the mirrored copy must have had its winding corrected
+    CHECK(r.normalsOutward);
+    CHECK_NEAR(r.volume, 2.0, 1e-6);
+    CHECK_NEAR(r.bounds.min.x, -6.0, 1e-5);
+    CHECK_NEAR(r.bounds.max.x, 1.0, 1e-5);
+    // larger file: exercises dynamic-Huffman deflate blocks
+    const Mesh s = loadOrFail(fs::path(SAMPLES_DIR) / "icosphere_clean.3mf");
+    const MeshReport sr = analyze(s).report;
+    CHECK(sr.triangles == 1280);
+    CHECK(sr.weldedVertices == 642);
+    CHECK(sr.closedManifold);
+}
+
+static void testThreeMfCorruption() {
+    const fs::path dir = TEST_DATA_DIR;
+    std::ifstream f(fs::path(SAMPLES_DIR) / "icosphere_clean.3mf", std::ios::binary);
+    const std::vector<char> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    CHECK(bytes.size() > 1000);
+    // truncated archive
+    std::vector<unsigned char> cut(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(bytes.size() / 2));
+    writeBytes(tempDir() / "cut.3mf", cut);
+    Mesh m;
+    std::string err;
+    CHECK(!loadMeshFile(tempDir() / "cut.3mf", m, err));
+    CHECK(!err.empty());
+    // flipped bytes inside the compressed data must fail cleanly (or at worst load), never crash
+    for (size_t pos = 100; pos < bytes.size() - 200; pos += 997) {
+        std::vector<unsigned char> bad(bytes.begin(), bytes.end());
+        bad[pos] ^= 0x5A;
+        writeBytes(tempDir() / "bad.3mf", bad);
+        Mesh mm;
+        std::string e2;
+        loadMeshFile(tempDir() / "bad.3mf", mm, e2);
+    }
+    // not a zip at all
+    writeText(tempDir() / "text.3mf", "this is plain text, not a zip archive at all, but long enough to be inspected");
+    err.clear();
+    CHECK(!loadMeshFile(tempDir() / "text.3mf", m, err));
+    CHECK(!err.empty());
+    (void)dir;
+}
+
 static void testErrors() {
     Mesh m;
     std::string err;
@@ -511,6 +568,8 @@ int main() {
         {"binary PLY (big endian)", [] { testPlyBinary(true); }},
         {"OFF loader", testOff},
         {"GLB loader", testGlb},
+        {"3MF loader", testThreeMf},
+        {"3MF corrupt files", testThreeMfCorruption},
         {"loader error handling", testErrors},
     };
     for (const Test& t : tests) {

@@ -17,6 +17,7 @@ bool loadObj(const char* data, size_t size, Mesh& out, std::string& error);
 bool loadStl(const char* data, size_t size, Mesh& out, std::string& error);
 bool loadPly(const char* data, size_t size, Mesh& out, std::string& error);
 bool loadOff(const char* data, size_t size, Mesh& out, std::string& error);
+bool loadThreeMf(const char* data, size_t size, Mesh& out, std::string& error);
 bool loadGltf(const std::filesystem::path& path, Mesh& out, std::string& error);
 
 namespace parse {

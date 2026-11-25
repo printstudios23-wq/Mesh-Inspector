@@ -133,9 +133,10 @@ std::string openFileDialog(GLFWwindow* window) {
     ofn.nMaxFile = static_cast<DWORD>(std::size(file));
     ofn.lpstrTitle = L"Open 3D model";
     ofn.lpstrFilter =
-        L"All supported 3D files\0*.obj;*.stl;*.ply;*.off;*.glb;*.gltf\0"
+        L"All supported 3D files\0*.obj;*.stl;*.3mf;*.ply;*.off;*.glb;*.gltf\0"
         L"Wavefront OBJ (*.obj)\0*.obj\0"
         L"STL (*.stl)\0*.stl\0"
+        L"3MF (*.3mf)\0*.3mf\0"
         L"PLY (*.ply)\0*.ply\0"
         L"OFF (*.off)\0*.off\0"
         L"glTF / GLB (*.glb;*.gltf)\0*.glb;*.gltf\0"
