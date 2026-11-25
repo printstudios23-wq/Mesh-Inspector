@@ -1,0 +1,72 @@
+name: release
+
+# Builds the Windows executable on a clean GitHub runner and attaches it to a GitHub Release.
+#
+#   * Push a version tag (git tag v0.1.0 && git push origin v0.1.0), or
+#   * Actions tab > "release" > Run workflow, and type a tag such as v0.1.0.
+#
+# Running it without a tag only builds and keeps the files as a downloadable workflow artifact.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (for example v0.1.0). Leave empty to only build.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write  # needed to create the release and upload the files
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B out -A x64
+
+      - name: Build
+        run: cmake --build out --config Release
+
+      - name: Test
+        run: ctest --test-dir out -C Release --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          # 1) the bare executable: a direct, instant download (no space in the name, so the URL stays simple)
+          Copy-Item "out/Release/Mesh Inspector.exe" "dist/Mesh-Inspector.exe"
+          # 2) a zip with the program, the sample models and the licence files
+          $stage = "stage/Mesh Inspector"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "out/Release/Mesh Inspector.exe" $stage
+          Copy-Item samples -Destination "$stage/samples" -Recurse
+          Copy-Item README.md, LICENSE, THIRD_PARTY_NOTICES.md -Destination $stage
+          Compress-Archive -Path "stage/Mesh Inspector" -DestinationPath "dist/Mesh-Inspector-windows-x64.zip"
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesh-Inspector-windows-x64
+          path: dist/*
+
+      - name: Publish release (version tag pushed)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Publish release (started by hand with a tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: dist/*
+          generate_release_notes: true

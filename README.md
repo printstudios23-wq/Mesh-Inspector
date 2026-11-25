@@ -15,18 +15,21 @@ Files with several pieces can be split up and rearranged like in a slicer.
 
 ## Quick start (no compiling needed)
 
-A ready-to-run 64-bit Windows build is included in this repository:
+**[⬇ Download Mesh Inspector.exe](https://github.com/printstudios23-wq/3D-viewer/raw/main/build/Mesh%20Inspector.exe)**
+— a ready-to-run 64-bit Windows program. Download it, double-click it, done: there is nothing to install. Then drop a
+model file onto the window, or use **File > Open**.
 
-**[`build/Mesh Inspector.exe`](build/Mesh%20Inspector.exe)**
+Versioned downloads (the program on its own, or a zip that also contains the sample models) are on the
+**[Releases page](https://github.com/printstudios23-wq/3D-viewer/releases/latest)**. Those are built automatically on a
+clean Windows machine by GitHub Actions (see `.github/workflows/release.yml`).
 
-Download or clone the repository and double-click it — there is nothing to install. You can also drop a model file onto
-the window, or start it from a terminal with a file:
+You can also start it from a terminal with a file:
 
 ```bat
-"build\Mesh Inspector.exe" samples\three_parts.3mf
+"Mesh Inspector.exe" samples\three_parts.3mf
 ```
 
-(In PowerShell put `&` in front: `& ".\build\Mesh Inspector.exe" samples\three_parts.3mf`.)
+(In PowerShell put `&` in front: `& ".\Mesh Inspector.exe" samples\three_parts.3mf`.)
 
 Good to know:
 
@@ -34,8 +37,8 @@ Good to know:
   desktop sessions and some virtual machines do not offer it).
 - The executable is not code-signed, so Windows SmartScreen may say "unknown publisher" the first time. Choose
   **More info → Run anyway**.
-- It was built with MinGW-w64 and is statically linked, so it does not need any extra DLLs or the Visual C++ runtime.
-  To build it yourself (for example to get a Visual Studio build) see [Building](#building).
+- The program is statically linked, so it does not need any extra DLLs or the Visual C++ runtime. To build it yourself
+  see [Building](#building).
 
 ## Features
 
@@ -183,7 +186,8 @@ To build only the library and the tests (no GUI, nothing but cgltf is downloaded
 ## Project layout
 
 ```
-build/              the prebuilt Windows executable
+build/              the prebuilt Windows executable (the latest build from this repository)
+.github/workflows/  CI build + tests, and the release workflow that publishes the executable
 src/analysis.*      mesh analysis (welding, topology, triangle quality)
 src/loaders/        OBJ, STL, 3MF (with its own ZIP/inflate), PLY, OFF and glTF readers
 src/mesh_io.*       picks the loader from the file extension
