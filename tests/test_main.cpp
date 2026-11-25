@@ -1,0 +1,524 @@
+// SPDX-License-Identifier: Apache-2.0
+// Self-contained tests (no framework): mesh analysis results and the file loaders.
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "analysis.h"
+#include "mesh_io.h"
+
+using namespace mi;
+
+static int g_failures = 0;
+static int g_checks = 0;
+
+#define CHECK(cond)                                                          \
+    do {                                                                     \
+        ++g_checks;                                                          \
+        if (!(cond)) {                                                       \
+            ++g_failures;                                                    \
+            std::printf("    FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);   \
+        }                                                                    \
+    } while (0)
+
+#define CHECK_NEAR(a, b, eps)                                                                              \
+    do {                                                                                                   \
+        ++g_checks;                                                                                        \
+        const double va = (a), vb = (b);                                                                   \
+        if (!(std::fabs(va - vb) <= (eps))) {                                                              \
+            ++g_failures;                                                                                  \
+            std::printf("    FAIL %s:%d: %s (=%g) != %s (=%g)\n", __FILE__, __LINE__, #a, va, #b, vb);       \
+        }                                                                                                  \
+    } while (0)
+
+// ---------------------------------------------------------------- test meshes
+
+// Unit cube, counter-clockwise (outward) winding, 8 shared vertices, 12 triangles.
+static Mesh makeCube() {
+    Mesh m;
+    m.positions = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}};
+    m.indices = {0, 3, 2, 0, 2, 1,   // bottom
+                 4, 5, 6, 4, 6, 7,   // top
+                 0, 1, 5, 0, 5, 4,   // front
+                 2, 3, 7, 2, 7, 6,   // back
+                 0, 4, 7, 0, 7, 3,   // left
+                 1, 2, 6, 1, 6, 5};  // right
+    return m;
+}
+
+// Same cube as an STL-style triangle soup (every triangle owns its 3 vertices).
+static Mesh makeCubeSoup() {
+    const Mesh c = makeCube();
+    Mesh m;
+    for (uint32_t i : c.indices) {
+        m.positions.push_back(c.positions[i]);
+        m.indices.push_back(static_cast<uint32_t>(m.positions.size() - 1));
+    }
+    return m;
+}
+
+static AnalyzedMesh analyze(const Mesh& m) { return analyzeMesh(m, AnalysisSettings{}); }
+
+// ---------------------------------------------------------------- analysis tests
+
+static void testCleanCube() {
+    const AnalyzedMesh a = analyze(makeCube());
+    const MeshReport& r = a.report;
+    CHECK(r.weldedVertices == 8);
+    CHECK(r.triangles == 12);
+    CHECK(r.edges == 18);
+    CHECK(r.boundaryEdges == 0);
+    CHECK(r.nonManifoldEdges == 0);
+    CHECK(r.inconsistentEdges == 0);
+    CHECK(r.degenerateTriangles == 0);
+    CHECK(r.duplicateTriangles == 0);
+    CHECK(r.holeLoops == 0);
+    CHECK(r.shells == 1);
+    CHECK(r.eulerCharacteristic == 2);
+    CHECK(r.genus == 0);
+    CHECK(r.watertight && r.consistentWinding && r.closedManifold && r.normalsOutward);
+    CHECK_NEAR(r.volume, 1.0, 1e-9);
+    CHECK_NEAR(r.surfaceArea, 6.0, 1e-9);
+    CHECK_NEAR(r.bounds.size().x, 1.0, 1e-6);
+    CHECK(a.render.positions.size() == 8 && a.render.normals.size() == 8 && a.render.indices.size() == 36);
+}
+
+static void testCubeSoupWeldsToClosedMesh() {
+    const AnalyzedMesh a = analyze(makeCubeSoup());
+    const MeshReport& r = a.report;
+    CHECK(r.fileVertices == 36);
+    CHECK(r.weldedVertices == 8);
+    CHECK(r.boundaryEdges == 0);
+    CHECK(r.closedManifold);
+    CHECK_NEAR(r.volume, 1.0, 1e-9);
+}
+
+static void testMissingFaceIsReportedAsHole() {
+    Mesh m = makeCube();
+    m.indices.erase(m.indices.begin() + 6, m.indices.begin() + 12);  // drop the top quad
+    const MeshReport r = analyze(m).report;
+    CHECK(r.boundaryEdges == 4);
+    CHECK(r.holeLoops == 1);
+    CHECK(r.openChains == 0);
+    CHECK(!r.watertight);
+    CHECK(r.holes.size() == 1);
+    if (!r.holes.empty()) {
+        CHECK(r.holes[0].edgeCount == 4);
+        CHECK(r.holes[0].closed);
+        CHECK_NEAR(r.holes[0].perimeter, 4.0, 1e-6);
+        CHECK_NEAR(r.holes[0].center.z, 1.0, 1e-6);
+    }
+}
+
+static void testTwoHoles() {
+    Mesh m = makeCube();
+    // remove top (indices 6..11) and bottom (0..5)
+    m.indices.erase(m.indices.begin() + 6, m.indices.begin() + 12);
+    m.indices.erase(m.indices.begin(), m.indices.begin() + 6);
+    const MeshReport r = analyze(m).report;
+    CHECK(r.boundaryEdges == 8);
+    CHECK(r.holeLoops == 2);
+    CHECK(r.eulerCharacteristic == 0);  // open tube
+}
+
+static void testFlippedNormals() {
+    Mesh m = makeCube();
+    for (size_t i = 0; i < m.indices.size(); i += 3) std::swap(m.indices[i + 1], m.indices[i + 2]);
+    const MeshReport r = analyze(m).report;
+    CHECK(r.closedManifold);  // still consistent, just inside-out
+    CHECK(!r.normalsOutward);
+    CHECK_NEAR(r.volume, -1.0, 1e-9);
+}
+
+static void testSingleFlippedTriangle() {
+    Mesh m = makeCube();
+    std::swap(m.indices[1], m.indices[2]);  // flip one bottom triangle
+    const MeshReport r = analyze(m).report;
+    CHECK(r.inconsistentEdges == 3);
+    CHECK(!r.consistentWinding);
+    CHECK(r.watertight);  // topologically closed, but not consistently oriented
+    CHECK(!r.closedManifold);
+}
+
+static void testDegenerateTriangles() {
+    Mesh m = makeCube();
+    // collapsed triangle (two identical corners)
+    m.indices.insert(m.indices.end(), {1, 1, 2});
+    // zero-area triangle with three distinct but collinear corners, far from the cube
+    const uint32_t base = static_cast<uint32_t>(m.positions.size());
+    m.positions.push_back({5, 5, 5});
+    m.positions.push_back({6, 5, 5});
+    m.positions.push_back({7, 5, 5});
+    m.indices.insert(m.indices.end(), {base, base + 1, base + 2});
+    // triangle with a NaN corner
+    const uint32_t nanIdx = static_cast<uint32_t>(m.positions.size());
+    m.positions.push_back({std::nanf(""), 0, 0});
+    m.indices.insert(m.indices.end(), {0, 1, nanIdx});
+
+    const AnalyzedMesh a = analyze(m);
+    const MeshReport& r = a.report;
+    CHECK(r.collapsedTriangles == 1);
+    CHECK(r.zeroAreaTriangles == 1);
+    CHECK(r.invalidTriangles == 1);
+    CHECK(r.degenerateTriangles == 3);
+    CHECK(r.nonFiniteVertices == 1);
+    CHECK(a.overlays.degenerateMarkers.size() == 2);  // invalid one has no usable position
+    CHECK(r.sliverTriangles == 0);
+}
+
+static void testNonManifoldEdge() {
+    Mesh m;
+    m.positions = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}};
+    m.indices = {0, 1, 2, 0, 1, 3, 0, 1, 4};  // three fins on one edge
+    const MeshReport r = analyze(m).report;
+    CHECK(r.nonManifoldEdges == 1);
+    CHECK(!r.watertight);
+}
+
+static void testOpenChainIsOneLoop() {
+    // A fin glued onto one edge of the cube leaves two open edges that meet at the fin tip.
+    // Whichever edge the walker starts from, they must be reported as ONE chain of two edges.
+    Mesh m = makeCube();
+    m.positions.push_back({0.5f, -1.0f, -1.0f});
+    m.indices.insert(m.indices.end(), {0, 1, 8});
+    const MeshReport r = analyze(m).report;
+    CHECK(r.boundaryEdges == 2);
+    CHECK(r.nonManifoldEdges == 1);
+    CHECK(r.holeLoops == 1);
+    CHECK(r.openChains == 1);
+    if (!r.holes.empty()) {
+        CHECK(r.holes[0].edgeCount == 2);
+        CHECK(!r.holes[0].closed);
+    }
+}
+
+static void testDuplicateTriangle() {
+    Mesh m = makeCube();
+    m.indices.insert(m.indices.end(), {0, 3, 2});  // same triangle again
+    const MeshReport r = analyze(m).report;
+    CHECK(r.duplicateTriangles == 1);
+    CHECK(r.nonManifoldEdges > 0);
+}
+
+static void testSliver() {
+    Mesh m;
+    m.positions = {{0, 0, 0}, {10, 0, 0}, {10, 0.01f, 0}};  // smallest angle ~0.057 deg
+    m.indices = {0, 1, 2};
+    const MeshReport r = analyze(m).report;
+    CHECK(r.sliverTriangles == 1);
+    CHECK(r.degenerateTriangles == 0);
+    CHECK(r.boundaryEdges == 3);
+    CHECK(r.holeLoops == 1);
+}
+
+static void testLooseVerticesAndShells() {
+    Mesh m = makeCube();
+    m.positions.push_back({9, 9, 9});  // unreferenced
+    // a second, separate tetra-like piece
+    const uint32_t b = static_cast<uint32_t>(m.positions.size());
+    m.positions.insert(m.positions.end(), {{20, 0, 0}, {21, 0, 0}, {20, 1, 0}, {20, 0, 1}});
+    m.indices.insert(m.indices.end(), {b, b + 2, b + 1, b, b + 1, b + 3, b, b + 3, b + 2, b + 1, b + 2, b + 3});
+    const MeshReport r = analyze(m).report;
+    CHECK(r.looseVertices == 1);
+    CHECK(r.shells == 2);
+    CHECK(r.closedManifold);
+    CHECK(r.eulerCharacteristic == 4);
+    CHECK(r.genus == 0);
+}
+
+static void testEmptyAndTiny() {
+    Mesh empty;
+    const MeshReport r0 = analyze(empty).report;
+    CHECK(r0.triangles == 0 && !r0.watertight);
+
+    Mesh pointsOnly;
+    pointsOnly.positions = {{1, 2, 3}};
+    const MeshReport r1 = analyze(pointsOnly).report;
+    CHECK(r1.triangles == 0 && r1.looseVertices == 1);
+
+    Mesh allSame;
+    allSame.positions = {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}};
+    allSame.indices = {0, 1, 2};
+    const MeshReport r2 = analyze(allSame).report;
+    CHECK(r2.collapsedTriangles == 1);
+}
+
+// ---------------------------------------------------------------- loader tests
+
+namespace fs = std::filesystem;
+
+static fs::path tempDir() {
+    fs::path d = fs::temp_directory_path() / "meshinspector_tests";
+    fs::create_directories(d);
+    return d;
+}
+
+static void writeText(const fs::path& p, const std::string& s) {
+    std::ofstream f(p, std::ios::binary);
+    f << s;
+}
+static void writeBytes(const fs::path& p, const std::vector<unsigned char>& b) {
+    std::ofstream f(p, std::ios::binary);
+    f.write(reinterpret_cast<const char*>(b.data()), static_cast<std::streamsize>(b.size()));
+}
+
+template <class T>
+static void put(std::vector<unsigned char>& out, T v, bool bigEndian = false) {
+    unsigned char b[sizeof(T)];
+    std::memcpy(b, &v, sizeof(T));  // host is little-endian on every supported platform
+    if (bigEndian) std::reverse(b, b + sizeof(T));
+    out.insert(out.end(), b, b + sizeof(T));
+}
+
+static Mesh loadOrFail(const fs::path& p) {
+    Mesh m;
+    std::string err;
+    const bool ok = loadMeshFile(p, m, err);
+    if (!ok) std::printf("    load error for %s: %s\n", p.string().c_str(), err.c_str());
+    CHECK(ok);
+    return m;
+}
+
+static void expectCube(const Mesh& m, const char* what) {
+    const AnalyzedMesh a = analyze(m);
+    if (!a.report.closedManifold || a.report.triangles != 12 || a.report.weldedVertices != 8) {
+        std::printf("    %s: tris=%zu verts=%zu boundary=%zu\n", what, a.report.triangles, a.report.weldedVertices,
+                    a.report.boundaryEdges);
+    }
+    CHECK(a.report.closedManifold);
+    CHECK(a.report.triangles == 12);
+    CHECK(a.report.weldedVertices == 8);
+    CHECK_NEAR(a.report.volume, 1.0, 1e-6);
+}
+
+static void testObj() {
+    // quads, negative indices, v/vt/vn syntax, comments, CRLF line endings
+    std::string s = "# cube\r\n";
+    const Mesh c = makeCube();
+    for (const Vec3& p : c.positions) s += "v " + std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.z) + "\r\n";
+    s += "vt 0 0\nvn 0 0 1\n";
+    s += "f 1/1/1 4/1/1 3/1/1 2/1/1\n";      // bottom quad  (0,3,2,1)
+    s += "f 5//1 6//1 7//1 8//1\n";          // top quad     (4,5,6,7)
+    s += "f 1 2 6 5\n";                      // front quad   (0,1,5,4)
+    s += "f 3 4 8 7\n";                      // back quad    (2,3,7,6)
+    s += "f 1 5 8 4\n";                      // left quad    (0,4,7,3)
+    s += "f -7 -6 -2 -3\n";                  // right quad   (1,2,6,5) with negative indices
+    const fs::path p = tempDir() / "cube.obj";
+    writeText(p, s);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "Wavefront OBJ");
+    expectCube(m, "obj");
+
+    writeText(tempDir() / "bad.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 9\nf 1 2 3\n");
+    const Mesh b = loadOrFail(tempDir() / "bad.obj");
+    CHECK(b.indices.size() == 3);
+    CHECK(!b.warnings.empty());
+}
+
+static void testStlAscii() {
+    const Mesh c = makeCubeSoup();
+    std::string s = "solid cube\n";
+    for (size_t t = 0; t < c.indices.size(); t += 3) {
+        s += "  facet normal 0 0 0\n    outer loop\n";
+        for (int k = 0; k < 3; ++k) {
+            const Vec3& v = c.positions[c.indices[t + static_cast<size_t>(k)]];
+            s += "      vertex " + std::to_string(v.x) + " " + std::to_string(v.y) + " " + std::to_string(v.z) + "\n";
+        }
+        s += "    endloop\n  endfacet\n";
+    }
+    s += "endsolid cube\n";
+    const fs::path p = tempDir() / "cube_ascii.stl";
+    writeText(p, s);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "ASCII STL");
+    expectCube(m, "ascii stl");
+}
+
+static void testStlBinary() {
+    const Mesh c = makeCubeSoup();
+    std::vector<unsigned char> b(80, 0);
+    // a header that starts with "solid" must not fool the detection
+    std::memcpy(b.data(), "solid exported by test", 22);
+    put<uint32_t>(b, static_cast<uint32_t>(c.indices.size() / 3));
+    for (size_t t = 0; t < c.indices.size(); t += 3) {
+        for (int i = 0; i < 3; ++i) put<float>(b, 0.0f);  // normal
+        for (int k = 0; k < 3; ++k) {
+            const Vec3& v = c.positions[c.indices[t + static_cast<size_t>(k)]];
+            put<float>(b, v.x);
+            put<float>(b, v.y);
+            put<float>(b, v.z);
+        }
+        put<uint16_t>(b, 0);
+    }
+    const fs::path p = tempDir() / "cube_bin.stl";
+    writeBytes(p, b);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "Binary STL");
+    expectCube(m, "binary stl");
+}
+
+static std::string plyHeader(const char* format, bool color) {
+    std::string h = "ply\nformat ";
+    h += format;
+    h += " 1.0\ncomment test\nelement vertex 8\nproperty float x\nproperty float y\nproperty float z\n";
+    if (color) h += "property uchar red\nproperty uchar green\nproperty uchar blue\n";
+    h += "element face 6\nproperty list uchar int vertex_indices\nend_header\n";
+    return h;
+}
+
+static void testPlyAscii() {
+    const Mesh c = makeCube();
+    std::string s = plyHeader("ascii", true);
+    for (const Vec3& p : c.positions) s += std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.z) + " 255 128 0\n";
+    s += "4 0 3 2 1\n4 4 5 6 7\n4 0 1 5 4\n4 2 3 7 6\n4 0 4 7 3\n4 1 2 6 5\n";
+    const fs::path p = tempDir() / "cube_ascii.ply";
+    writeText(p, s);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "ASCII PLY");
+    CHECK(m.colors.size() == 8);
+    if (m.colors.size() == 8) CHECK_NEAR(m.colors[0].y, 128.0 / 255.0, 1e-4);
+    expectCube(m, "ascii ply");
+}
+
+static void testPlyBinary(bool bigEndian) {
+    const Mesh c = makeCube();
+    std::vector<unsigned char> b;
+    const std::string h = plyHeader(bigEndian ? "binary_big_endian" : "binary_little_endian", false);
+    b.insert(b.end(), h.begin(), h.end());
+    for (const Vec3& p : c.positions) {
+        put<float>(b, p.x, bigEndian);
+        put<float>(b, p.y, bigEndian);
+        put<float>(b, p.z, bigEndian);
+    }
+    const int quads[6][4] = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {2, 3, 7, 6}, {0, 4, 7, 3}, {1, 2, 6, 5}};
+    for (const auto& q : quads) {
+        put<uint8_t>(b, 4);
+        for (int v : q) put<int32_t>(b, v, bigEndian);
+    }
+    const fs::path p = tempDir() / (bigEndian ? "cube_be.ply" : "cube_le.ply");
+    writeBytes(p, b);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "Binary PLY");
+    expectCube(m, bigEndian ? "binary BE ply" : "binary LE ply");
+}
+
+static void testOff() {
+    const Mesh c = makeCube();
+    std::string s = "OFF\n# comment\n8 6 12\n";
+    for (const Vec3& p : c.positions) s += std::to_string(p.x) + " " + std::to_string(p.y) + " " + std::to_string(p.z) + "\n";
+    s += "4 0 3 2 1\n4 4 5 6 7\n4 0 1 5 4\n4 2 3 7 6\n4 0 4 7 3\n4 1 2 6 5\n";
+    const fs::path p = tempDir() / "cube.off";
+    writeText(p, s);
+    expectCube(loadOrFail(p), "off");
+}
+
+static void testGlb() {
+    const Mesh c = makeCube();
+    std::vector<unsigned char> bin;
+    for (const Vec3& p : c.positions) {
+        put<float>(bin, p.x);
+        put<float>(bin, p.y);
+        put<float>(bin, p.z);
+    }
+    for (uint32_t i : c.indices) put<uint16_t>(bin, static_cast<uint16_t>(i));
+    std::string json =
+        "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+        "\"nodes\":[{\"mesh\":0,\"translation\":[10,0,0]}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":8,\"type\":\"VEC3\",\"min\":[0,0,0],\"max\":[1,1,1]},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":36,\"type\":\"SCALAR\"}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":96,\"target\":34962},"
+        "{\"buffer\":0,\"byteOffset\":96,\"byteLength\":72,\"target\":34963}],"
+        "\"buffers\":[{\"byteLength\":168}]}";
+    while (json.size() % 4) json += ' ';
+    while (bin.size() % 4) bin.push_back(0);
+    std::vector<unsigned char> glb;
+    put<uint32_t>(glb, 0x46546C67u);
+    put<uint32_t>(glb, 2u);
+    put<uint32_t>(glb, static_cast<uint32_t>(12 + 8 + json.size() + 8 + bin.size()));
+    put<uint32_t>(glb, static_cast<uint32_t>(json.size()));
+    put<uint32_t>(glb, 0x4E4F534Au);
+    glb.insert(glb.end(), json.begin(), json.end());
+    put<uint32_t>(glb, static_cast<uint32_t>(bin.size()));
+    put<uint32_t>(glb, 0x004E4942u);
+    glb.insert(glb.end(), bin.begin(), bin.end());
+
+    const fs::path p = tempDir() / "cube.glb";
+    writeBytes(p, glb);
+    const Mesh m = loadOrFail(p);
+    CHECK(m.format == "glTF Binary (GLB)");
+    expectCube(m, "glb");
+    // node translation must have been applied
+    const AnalyzedMesh a = analyze(m);
+    CHECK_NEAR(a.report.bounds.min.x, 10.0, 1e-5);
+}
+
+static void testErrors() {
+    Mesh m;
+    std::string err;
+    CHECK(!loadMeshFile(tempDir() / "does_not_exist.stl", m, err));
+    CHECK(!err.empty());
+    writeText(tempDir() / "garbage.ply", "this is not a ply file");
+    err.clear();
+    CHECK(!loadMeshFile(tempDir() / "garbage.ply", m, err));
+    CHECK(!err.empty());
+    writeText(tempDir() / "what.xyz", "hello");
+    err.clear();
+    CHECK(!loadMeshFile(tempDir() / "what.xyz", m, err));
+    CHECK(!err.empty());
+    // truncated binary PLY must fail cleanly, not crash
+    std::vector<unsigned char> b;
+    const std::string h = plyHeader("binary_little_endian", false);
+    b.insert(b.end(), h.begin(), h.end());
+    put<float>(b, 1.0f);
+    writeBytes(tempDir() / "trunc.ply", b);
+    err.clear();
+    CHECK(!loadMeshFile(tempDir() / "trunc.ply", m, err));
+    CHECK(!err.empty());
+}
+
+int main() {
+    struct Test {
+        const char* name;
+        std::function<void()> fn;
+    };
+    const Test tests[] = {
+        {"clean cube", testCleanCube},
+        {"cube soup welds to closed mesh", testCubeSoupWeldsToClosedMesh},
+        {"missing face -> hole", testMissingFaceIsReportedAsHole},
+        {"two holes", testTwoHoles},
+        {"flipped normals", testFlippedNormals},
+        {"single flipped triangle", testSingleFlippedTriangle},
+        {"degenerate triangles", testDegenerateTriangles},
+        {"non-manifold edge", testNonManifoldEdge},
+        {"open chain is one loop", testOpenChainIsOneLoop},
+        {"duplicate triangle", testDuplicateTriangle},
+        {"sliver triangle", testSliver},
+        {"loose vertices + shells", testLooseVerticesAndShells},
+        {"empty / tiny meshes", testEmptyAndTiny},
+        {"OBJ loader", testObj},
+        {"ASCII STL loader", testStlAscii},
+        {"binary STL loader", testStlBinary},
+        {"ASCII PLY loader", testPlyAscii},
+        {"binary PLY (little endian)", [] { testPlyBinary(false); }},
+        {"binary PLY (big endian)", [] { testPlyBinary(true); }},
+        {"OFF loader", testOff},
+        {"GLB loader", testGlb},
+        {"loader error handling", testErrors},
+    };
+    for (const Test& t : tests) {
+        const int before = g_failures;
+        std::printf("[ RUN  ] %s\n", t.name);
+        t.fn();
+        std::printf("[ %s ] %s\n", g_failures == before ? " OK " : "FAIL", t.name);
+    }
+    std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}
