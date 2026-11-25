@@ -11,9 +11,11 @@ Files with several pieces can be split up and rearranged like in a slicer.
 
 ![Selecting and moving objects with the move gizmo](docs/screenshot-objects.png)
 
-> Version 0.1 — an early release. Windows is the main target; it also builds on Linux.
+> Version 0.1 — an early release for Windows and Linux. Windows is the main target and the better tested of the two.
 
 ## Quick start (no compiling needed)
+
+### Windows
 
 **[⬇ Download Mesh-Inspector.exe](https://github.com/printstudios23-wq/Mesh-Inspector/releases/latest/download/Mesh-Inspector.exe)**
 — a ready-to-run 64-bit Windows program. Download it, double-click it, done: there is nothing to install. Then drop a
@@ -39,6 +41,30 @@ Good to know:
   **More info → Run anyway**.
 - The program is statically linked, so it does not need any extra DLLs or the Visual C++ runtime. To build it yourself
   see [Building](#building).
+
+### Linux
+
+**[⬇ Mesh-Inspector-linux-x64.tar.gz](https://github.com/printstudios23-wq/Mesh-Inspector/releases/latest/download/Mesh-Inspector-linux-x64.tar.gz)**
+— a 64-bit Linux build, together with the sample models.
+
+```sh
+tar xzf Mesh-Inspector-linux-x64.tar.gz
+cd Mesh-Inspector-linux-x64
+./Mesh-Inspector samples/three_parts.3mf
+```
+
+Good to know:
+
+- It needs a graphical desktop session (X11, or Wayland through XWayland) and a graphics driver with **OpenGL 3.3**
+  (Mesa is fine). The usual X11 / OpenGL libraries (`libX11`, `libGL`) must be installed, which they are on practically
+  every desktop.
+- It is built on Ubuntu 22.04 and needs glibc 2.34 or newer, so it runs on Ubuntu 22.04+, Debian 12+, Fedora 35+ and
+  similar. The C++ runtime is built in.
+- **File > Open** uses the program's own file browser, so no extra tools such as `zenity` are needed. Drag & drop works
+  too, and you can pass a file on the command line.
+- Settings are saved in `~/.config/meshinspector/settings.ini`.
+- The Linux build is newer and less widely tested than the Windows one. If something does not work on your system,
+  please open an issue and mention your distribution and graphics driver.
 
 ## Features
 
